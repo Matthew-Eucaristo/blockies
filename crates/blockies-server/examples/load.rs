@@ -5,7 +5,10 @@ use blockies_protocol::{ClientMsg, ServerMsg};
 use blockies_server::{Config, Hub, serve};
 use blockies_store::SqliteStore;
 use futures_util::{SinkExt, StreamExt};
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio_tungstenite::tungstenite::Message;
 
 const WEB: &str = include_str!("../../blockies-dsl/examples/web.blk");
@@ -17,9 +20,15 @@ async fn main() {
     let store = Arc::new(SqliteStore::open(dir.join("load.db")).unwrap());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(serve(listener, Hub::new(store, Config::default()), std::future::pending()));
+    tokio::spawn(serve(
+        listener,
+        Hub::new(store, Config::default()),
+        std::future::pending(),
+    ));
     let base = format!("http://{addr}/api/boards/web");
-    tokio::task::spawn_blocking(move || ureq::put(&base).send(WEB).unwrap()).await.unwrap();
+    tokio::task::spawn_blocking(move || ureq::put(&base).send(WEB).unwrap())
+        .await
+        .unwrap();
 
     for (clients, rate) in [(50usize, 20u64), (100, 10), (200, 10), (500, 4)] {
         let secs = 5;

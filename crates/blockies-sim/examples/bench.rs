@@ -4,10 +4,18 @@ use blockies_sim::World;
 use std::time::Instant;
 
 fn main() {
-    println!("{:<6} {:>6} {:>8} {:>8} {:>10} {:>7}", "scene", "cells", "serial", "parallel", "Mcells/s", "awake");
+    println!(
+        "{:<6} {:>6} {:>8} {:>8} {:>10} {:>7}",
+        "scene", "cells", "serial", "parallel", "Mcells/s", "awake"
+    );
     for scene in [Scene::Storm, Scene::Calm] {
         for size in [1024u32, 2048, 4096] {
-            let spec = SimSpec { width: size, height: size, scene, seed: 7 };
+            let spec = SimSpec {
+                width: size,
+                height: size,
+                scene,
+                seed: 7,
+            };
             let mut row = Vec::new();
             let mut awake = 0;
             for parallel in [false, true] {
