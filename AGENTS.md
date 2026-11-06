@@ -25,6 +25,6 @@ Co-created by Matthew and Edward Manhattan (original idea).
 - Open each changed page in a browser, check light and dark mode, check the browser console for errors.
 - For DSL/parser changes: paste a board containing one invalid line; the error must be listed and every valid line must still render.
 
-## Open direction (not decided)
+## Direction (proposal, not final)
 
-Foundation first, features later: a headless core (state model + springs + scheduler), one block primitive that pieces are composed from, sandboxed compute (worker) with a tiny API, a validated agent format, and a canvas/WebGL renderer once block counts outgrow SVG.
+See `docs/architecture.md`. In short: Go core, one actor (goroutine) per board, server-authoritative intents → versioned patches, JSON protocol, SQLite store; runtimes (Bubble Tea TUI first, web, MCP) animate locally and may skip what they cannot render. `[c]` compute must stay deterministic (integer math, seeded PRNG, no clock). Keep `Transport` and `Store` behind interfaces.
