@@ -128,7 +128,7 @@ MCP is how tools like Claude Code call external programs. Our binary exposes too
 
 ## Spikes before committing
 
-1. TUI throughput: 2,000 half-block cells with springs at 30 fps in Ghostty/iTerm2, and over SSH.
+1. ~~TUI throughput~~ Done, see `spikes/tui/README.md`: about 1,800 blocks at 57 ticks/s, 0.2 ms sim per tick, about 2 KB per tick to the terminal. Still to check by eye in Ghostty, iTerm2 and over SSH.
 2. Actor + WebSocket + SQLite round trip with two clients and an MCP client on one board.
 3. `[c]` determinism: the same program in the DSL (or goja) producing identical cells on amd64, arm64 and WASM.
 4. Go → WASM bundle size for the core (brotli), if we want offline web.
