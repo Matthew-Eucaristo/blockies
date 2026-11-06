@@ -1,147 +1,97 @@
-# Architecture (proposal, v0)
+# Architecture (v0.1, Rust)
 
-Status: research notes and a proposed direction, checked 2026-11-06. Nothing here is final.
+Status: implemented in `crates/`, 2026-11-07. Why Rust and the lockstep model: [rust-pivot.md](rust-pivot.md).
 
-## The one rule
+## The two rules
 
-**The core owns state. Runtimes render it.**
-
-The core holds small, authoritative board state and validates every change. It never sends frames or pixels. Each runtime (terminal, web, agent) receives target states and animates toward them however it can. A runtime that cannot animate something simply jumps to the next state, and the end result is still correct.
-
-```
-            intents (user dragged X to state 2, set height=70)
-  ┌────────┐  ─────────────────────────────────►  ┌──────────────────────┐
-  │ TUI    │                                      │ core                 │
-  │ Web    │  ◄─────────────────────────────────  │  board actor (1/board)│
-  │ MCP    │      patches (X: state 2, rev 41)    │  validate, apply, log │
-  └────────┘                                      │  store (SQLite)       │
-   animate locally (springs)                      └──────────────────────┘
-```
-
-## What the server actually does
-
-1. **Holds each board in one "actor".** An actor is a single owner of one board's state that processes messages one at a time. Two users can never write the same board simultaneously, so there are no race conditions and no merge logic. In Go, this is one goroutine per board reading from a channel.
-2. **Validates intents.** "Move token `req` to state 9" is rejected if the route has 7 stops. This is also what keeps AI agents honest.
-3. **Broadcasts patches** with a revision number (`rev`) to everyone connected to that board.
-4. **Persists** a snapshot plus a short op log, with writes merged (about once per second and on idle), not one write per message.
-5. **Replays on reconnect.** A client says "I last saw rev 38" and gets patches 39 to 41, or a fresh snapshot.
-
-What it does **not** do: animation, layout, rendering, per-frame work.
-
-## Durable Objects and Rivet, simply
-
-- **Cloudflare Durable Objects (DO)** are this same actor idea as a hosted product: one object per board, single-threaded, with its own SQLite storage and WebSockets, running at the edge.
-  - DO classes must be written in JS/TS, Python or Rust. Go only fits as a TinyGo WASM module inside a TypeScript object.
-  - Cost for 1,000 boards × 3 users × 5 msg/s × 1 h/day is roughly $20–250/month if writes are merged, and over $1.7k if every message is written.
-  - Self-hosting via `workerd` exists but its disk storage and cluster mode are marked experimental.
-- **Rivet** is an open-source (Apache-2.0) actor platform: actors with state, SQLite, WebSockets and scheduling. It shipped a major 3.0 rewrite days ago (about 2026-11-03).
-  - Actors are TypeScript or Rust. There is no Go SDK or client.
-  - It adds a control plane you have to run. Rivet Cloud starts at $10/month plus nodes.
-
-**Verdict:** both implement the model we want, but neither fits a Go-first, self-hostable core today. We get the same model from plain Go: one goroutine per board, a channel as its mailbox, SQLite for storage. DO stays an option for a later hosted edge adapter that speaks the same protocol.
-
-**Do we need CRDTs (Yjs, Automerge)?** No. State is small, finite and has one authority. CRDTs only become useful if we later want offline editing on several devices that merges without a server.
-
-## Proposed shape
-
-One Go module, one binary, several commands:
+1. **The owner holds state, runtimes render it.** Every change goes through one board actor that validates it and broadcasts the result. Runtimes animate toward that state with springs, and skip whatever they cannot draw.
+2. **The block field runs in lockstep, it is never streamed.** The owner orders paints into ticks and broadcasts `(tick, paints)`. Every client runs the same deterministic sim and reports a hash now and then. A mismatch or a join is answered with a compressed snapshot.
 
 ```
-blockies serve   # core + WebSocket + embedded web UI (go:embed) + MCP over HTTP
-blockies tui     # terminal runtime; embeds the core in-process for local boards, or connects to a server
-blockies mcp     # MCP over stdio for Claude Code and other agents
+  agents ── blockies CLI ── HTTP ─┐
+                                  ▼
+  TUI ─┐                  ┌───────────────────────┐   SQLite
+  web ─┼── WebSocket v1 ──│ board actor (1/board) │── snapshot + op log
+  ... ─┘   ops ▲ ▼ patches│  Doc (ops) + World    │   (writer thread)
+               ticks      └───────────────────────┘
 ```
 
-Packages (sketch):
+## Crates
 
-| Package | Responsibility |
-|---|---|
-| `core/board` | Pieces, declared states, links, steps; pure state transitions, no I/O |
-| `core/compute` | Deterministic `[c]` programs: params → cells `{x, y, color, id}` |
-| `core/actor` | One goroutine per board: apply intents, emit patches, assign `rev` |
-| `protocol` | Message types and JSON Schema; transport-neutral |
-| `transport/ws`, `transport/inproc` | WebSocket and in-memory transports behind one interface |
-| `store/sqlite` | Snapshot + op log, merged writes; Postgres later for hosted |
-| `runtime/tui` | Bubble Tea app |
-| `mcp` | MCP server; just another client of the intent API |
-| `web/` | Web runtime, built and embedded into the binary |
+| Crate | Responsibility | I/O |
+|---|---|---|
+| `blockies-model` | The vocabulary: 8 piece kinds, states, links, steps, `sim` spec, materials, state tones | none (WASM-safe) |
+| `blockies-dsl` | Line DSL parser (per-line errors, valid lines still load), canonical formatter, agent prompt, examples | none |
+| `blockies-ops` | **The one command layer**: `Op` → validate → apply → `Patch`es. Links, cumulative steps, token moves, stable error codes | none |
+| `blockies-sim` | `[c]` block field: integer-only Margolus sand/water, 64×64 tiles, exact chunk sleeping, rayon tile rows (`parallel` feature) | none |
+| `blockies-anim` | `[d]` springs (`f32`, client-only) and struct-of-arrays bodies | none |
+| `blockies-protocol` | Wire messages (JSON, tag `t`), LZ4 snapshots, HTTP view types | none |
+| `blockies-store` | `Store` trait, with SQLite as its implementation: one snapshot row per board plus an append-only op log | SQLite |
+| `blockies-server` | axum: one tokio task per board, WebSocket clients, lockstep clock, REST for agents | network |
+| `blockies-tui` | ratatui runtime: boards with springs, the field as half-block pixels, local or live | terminal |
+| `blockies-cli` | The `blockies` binary: `serve`, `tui`, and agent commands with `--json` | all |
+| `blockies-wasm` | wasm-bindgen facade, the base for the JS SDK: `Field` (lockstep, `pixels()` pointer for WebGL), `check`, `formatDsl` | JS |
 
-`Transport` and `Store` are interfaces from day one, so DO, NATS or a hosted cloud sync can be added later without touching the core.
+The first five crates hold no I/O and no clock, so they compile to `wasm32-unknown-unknown` and stay deterministic.
 
-## Protocol v0 (draft)
+## Protocol v1
+
+JSON text frames, one message per frame. Board names: 1-64 of `a-z 0-9 - _`.
 
 | Direction | Message | Purpose |
 |---|---|---|
-| client → core | `hello{protocol, caps[], lastRev}` | Join a board; declare what this runtime can render |
-| core → client | `welcome{snapshot \| patches, rev}` | Full state, or what was missed since `lastRev` |
-| client → core | `intent{id, op, args, baseRev}` | "Set piece X to state k", "set param height=70" |
-| core → client | `ack{id, rev}` / `reject{id, code, detail}` | Clear, specific errors so agents can self-correct |
-| core → all | `patch{rev, ops[]}` | State transitions only, never interpolated positions |
-| both | `presence` | Who is here, cursors |
+| server → client, on join | `welcome {protocol, board, you, rev, dsl, states, step, sim?}` | Full board, plus a field snapshot if the board has one |
+| client → server | `op {id, op}` | Any `blockies_ops::Op` (`set`, `move`, `cycle`, `step`, `load`, `paint`) |
+| server → sender | `ack {id, rev, warnings?}` / `reject {id, code, detail}` | Stable codes: `unknown_piece`, `unknown_state`, `driven`, `not_on_route`, `no_steps`, `bad_step`, `bad_board`, `no_sim` |
+| server → all | `patch {rev, by, patches}` | `state`, `step` or `board` (full replace) |
+| server → all | `tick {tick, paints}` | Apply the paints in order, then step once (before: `world.tick() == tick`) |
+| client → server | `hash {tick, hash}` every 30 ticks | Hex string (u64 does not fit a JS number) |
+| client → server / server → client | `resync` / `snapshot {sim}` | LZ4 + base64 cells at a tick |
 
-Encoding: JSON first (agents write it, JSON Schema validates it, easy to debug). Add CBOR or msgpack only if profiling demands it. Prior art: tldraw sync (server-authoritative, `push` → `commit | discard | rebase`), Figma (server-authoritative, per-property last-writer-wins), Colyseus (snapshot then patches).
+HTTP (agents, CLI): `GET /api/boards`, `GET|PUT /api/boards/{board}` (PUT body = DSL), `POST /api/boards/{board}/ops` (JSON op). Errors are `{code, detail}` with 4xx.
 
-## Where `[c]` compute runs
+## Board actor
 
-Do not stream pixels. A 2,000-cell board at 30 Hz is wasteful to send and expensive on any hosted actor. Sync only the params and the program; compute runs where it is rendered, or on the server when a thin client cannot.
+- Owns a `Doc` (pieces and states) and, if the DSL has `sim W H`, a `World`. No locks: it handles one command at a time from a bounded mailbox (4096).
+- **Fan-out:** each message is serialised once, and subscribers share it by refcount. A subscriber whose 512-frame outbox is full is dropped instead of slowing the board; it reconnects and resyncs.
+- **Lockstep clock:** 33 ms by default. It runs only while someone is watching a board that has a field. The owner keeps the last 64 hashes to check clients.
+- **Persistence:** every accepted non-paint op is committed (snapshot + log row) by one writer thread, in order. Actors never wait on disk. The field itself is not stored; the DSL plus seed define how it starts.
 
-Determinism matters once compute runs in more than one place:
+## Determinism rules (`blockies-sim`)
 
-- JS `Math.sin` is not specified to match across engines, and Go may fuse multiply-add on arm64.
-- Use integer or fixed-point math, a seeded PRNG passed in as a param, and no clock or `Math.random` in `[c]`.
+- Integer math only (`clippy::float_arithmetic` is denied in the crate), no clock, no `HashMap` iteration, randomness only from `mix(x, y, tick, seed)`.
+- The sleeping and parallel paths must give the same result as the serial, everything-awake path. Tests check this, including with paints.
+- Golden hashes match the Go/Rust benchmark spec. `scripts/wasm-determinism.mjs` checks that WASM matches native.
 
-Options, in order of preference:
+## Measured (Apple M4, release build)
 
-1. **A small integer-only DSL interpreted in Go**, also compiled to WASM for the web when offline mode is needed. One implementation, best determinism.
-2. **Sandboxed JS run by `goja`** (pure-Go JS engine) on the server or in the TUI process. LLMs write JS fluently; the browser just renders results.
+| What | Number |
+|---|---|
+| Field, everything moving, 17M cells, 10 threads | 0.64 ms/tick (26 G cells/s); serial 3.1 ms |
+| Field, settled world, 17M cells | 0.13 ms/tick (3% of tiles awake) |
+| TUI frame (update + draw), 200×60 | board 0.1 ms, field 0.23 ms |
+| WASM bundle (`release-wasm`, before `wasm-opt`) | 309 KB |
+| Live board, 100 clients × 10 ops/s (100k patches/s) | ack p50 15 ms, p99 29 ms, no drops |
+| Live board, 200 clients × 10 ops/s (400k patches/s) | saturates (p99 0.46 s, drops): macOS loopback limit, see rust-pivot.md |
 
-## Runtimes
+Reproduce with:
 
-### TUI first (Go, Bubble Tea v2)
+```bash
+cargo run --release -p blockies-sim --example bench
+```
 
-A strong first-party runtime. It proves "runtimes degrade gracefully" from day one, and it fits the Go preference.
+```bash
+cargo run --release -p blockies-tui --example render_bench
+```
 
-- Bubble Tea v2.1.1 (`charm.land/bubbletea/v2`): up to 120 fps, synchronized output, mouse drag support (`MouseModeCellMotion`).
-- Harmonica: Charm's spring library, the same model as the web prototypes.
-- Pixels as **half-blocks** (`▀` with truecolor foreground/background) give two pixels per cell and survive tmux and SSH. Kitty/Sixel graphics are sharper but are stripped by tmux.
-- Risk: bytes written to the terminal. A full truecolor repaint of 160×50 cells is about 300 KB. Render a raw cell buffer with diffing, not one Lip Gloss style per cell. **Spike this first.**
+```bash
+cargo run --release -p blockies-server --example load
+```
 
-### Web
+## Next
 
-- Lightest option: Vite + vanilla TS or Preact, Canvas2D for blocks (switch to PixiJS beyond about 10k blocks).
-- React + TanStack Router only if the web app grows real multi-page routing (accounts, galleries).
-- Built assets are embedded into the Go binary with `embed.FS`, so self-hosting stays a single file.
-
-### Agents (MCP)
-
-MCP is how tools like Claude Code call external programs. Our binary exposes tools such as `board_create`, `piece_add`, `compute_define`, `piece_set_state`, `step` and `board_snapshot`. Each tool call becomes an `intent` against the core, so agents get the same validation as humans, and anyone with the TUI or web open watches the board change live.
-
-- Go SDK: `github.com/modelcontextprotocol/go-sdk` (official, v1.8.0).
-- Connect: `claude mcp add --transport stdio blockies -- blockies mcp`.
-- Later: MCP Apps (`ui://` resources) can show the web board inline in hosts that support it (Claude, Claude Desktop, VS Code). Claude Code is not listed as supporting it yet.
-
-## Open-source and hosted
-
-- OSS: core, protocol, TUI, web runtime, MCP server. Self-host = one binary + SQLite.
-- Hosted (possible paid tier): same binary with Postgres, sticky routing by board ID; NATS for board ownership and routing once one node is not enough; accounts and cloud sync of local boards.
-- A license has not been chosen yet. It decides what others may do with a hosted clone.
-
-## Spikes before committing
-
-1. TUI throughput: 2,000 half-block cells with springs at 30 fps in Ghostty/iTerm2, and over SSH.
-2. Actor + WebSocket + SQLite round trip with two clients and an MCP client on one board.
-3. `[c]` determinism: the same program in the DSL (or goja) producing identical cells on amd64, arm64 and WASM.
-4. Go → WASM bundle size for the core (brotli), if we want offline web.
-
-## Sources
-
-- Durable Objects: [concepts](https://developers.cloudflare.com/durable-objects/concepts/what-are-durable-objects/), [pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), [WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/), [limits](https://developers.cloudflare.com/durable-objects/platform/limits/), [workerd](https://github.com/cloudflare/workerd), [workers-go](https://github.com/syumai/workers-go)
-- Rivet: [repo](https://github.com/rivet-dev/rivet), [pricing](https://www.rivet.dev/pricing)
-- Go real-time: [centrifuge](https://github.com/centrifugal/centrifuge), [NATS](https://github.com/nats-io/nats-server)
-- Protocols: [tldraw sync protocol](https://github.com/tldraw/tldraw/blob/main/packages/sync-core/src/lib/protocol.ts), [Figma multiplayer](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/), [Liveblocks conflicts](https://development.liveblocks.io/docs/guides/how-conflict-resolution-works-in-liveblocks-sync)
-- Go/WASM: [Go wiki](https://go.dev/wiki/WebAssembly), [wasmexport](https://go.dev/blog/wasmexport), [float rules](https://go.dev/ref/spec#Floating_point_operators)
-- TUI: [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Harmonica](https://github.com/charmbracelet/harmonica)
-- MCP: [Go SDK](https://github.com/modelcontextprotocol/go-sdk), [Claude Code MCP](https://code.claude.com/docs/en/mcp), [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview)
-- Web: [PixiJS ParticleContainer](https://pixijs.com/blog/particlecontainer-v8), [Go embed](https://pkg.go.dev/embed)
-
-Not verified yet: DO duration billing between frequent messages, `go:wasmexport` under `GOOS=js`, Bubble Tea throughput at 2k animated cells, MCP Apps in Claude Code.
+1. **Patch batching per tick** (one frame per board per tick instead of one per op). In the benchmark this raised the ceiling 4×.
+2. **Web runtime:** `packages/sdk-js` (`mount(canvas)`, `send(op)`, `on(event)`) over `blockies-wasm`, with a WebGL2 texture straight from `Field::pixels()`, and the app shell on top.
+3. **MCP:** `rmcp`, a thin adapter over `blockies-ops` mounted on the same axum app (same codes as the CLI).
+4. **Thinking pieces:** `[c]` programs that drive `[d]` bodies (`blockies-anim::Bodies`) with identity, as in `prototypes/blocks.html`.
+5. **Kani** proofs for sim invariants (mass conservation, walls never move) in CI.
