@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "4317"],
       "port": 4317
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["run", "--release", "-p", "blockies-cli", "--", "serve", "--memory"],
+      "port": 4318
     }
   ]
 }
