@@ -1,0 +1,18 @@
+[package]
+name = "blockies-ops"
+description = "The one command layer shared by server, CLI, TUI and (later) MCP: validate, apply, emit patches."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+blockies-dsl.workspace = true
+blockies-model.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
