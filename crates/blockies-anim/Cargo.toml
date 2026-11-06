@@ -1,0 +1,10 @@
+[package]
+name = "blockies-anim"
+description = "The [d] layer: springs that carry pieces and bodies toward their targets. Client-only, f32."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

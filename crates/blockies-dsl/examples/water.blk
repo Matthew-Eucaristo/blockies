@@ -1,0 +1,19 @@
+# The water cycle
+box ocean "Ocean" at 140 420 states calm|warm
+box cloud "Cloud" at 460 140 states thin|heavy|storm
+box mountain "Mountain" at 800 260 states dry|snowy
+box river "River" at 640 520 states low|flowing|flood
+arrow evap ocean -> cloud states off|slow|fast "evaporation"
+arrow rain cloud -> mountain states off|on "rain"
+arrow run mountain -> river states off|on
+arrow back river -> ocean states off|on
+token drop "droplet" on ocean, cloud, mountain, river, ocean
+slider sun "Sunlight" at 140 640 states weak|strong|scorching
+bar heat "Evaporation" at 1080 470 values 10|55|92
+link sun -> heat, evap
+card why "Why does rain fall?" back "Droplets merge until gravity beats the updraft." at 1040 150
+step "Sun warms the ocean" ocean=warm sun=1
+step "Water vapor rises and condenses" drop=1 cloud=heavy
+step "Rain falls on the mountain" drop=2 rain=on mountain=snowy
+step "Snowmelt feeds the river" drop=3 run=on river=flowing
+step "The river returns to the sea" drop=4 back=on

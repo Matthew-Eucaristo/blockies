@@ -1,0 +1,21 @@
+# How a web request travels
+# Drag the token along its route. Slide traffic: CPU + API react. Flip the cache.
+box browser "Browser" at 120 220 states idle|waiting|done
+box cdn "CDN edge" at 420 220 states cold|warm
+box api "API server" at 720 220 states idle|busy|overloaded
+box db "Postgres" at 1020 220 states idle|busy
+arrow a1 browser -> cdn states off|on
+arrow a2 cdn -> api states off|on
+arrow a3 api -> db states off|on
+token req "GET /home" on browser, cdn, api, db, api, cdn, browser
+switch cache "Cache hit" at 380 430
+slider load "Traffic" at 640 430 states quiet|normal|spike
+bar cpu "API CPU" at 940 450 values 6|45|97
+link cache -> cdn
+link load -> cpu, api
+step "A user opens the page" browser=waiting a1=on
+step "The CDN edge checks its cache" req=1
+step "Cache miss: forwarded to the API" req=2 a2=on
+step "API asks the database" req=3 a3=on db=busy
+step "Response flows back to the browser" req=6 db=idle browser=done
+step "Next time, the cache answers" cache=on a2=off a3=off req=0 browser=idle
