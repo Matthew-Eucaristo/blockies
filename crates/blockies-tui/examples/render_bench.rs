@@ -5,10 +5,20 @@ use std::time::{Duration, Instant};
 
 fn main() {
     for (name, field) in [("web", false), ("sprint", false), ("sandbox", true)] {
-        let dsl = blockies_dsl::EXAMPLES.iter().find(|(n, _)| *n == name).unwrap().1;
-        let mut app = App::new(Source::Text { name: name.into(), dsl: dsl.into() }).unwrap();
+        let dsl = blockies_dsl::EXAMPLES
+            .iter()
+            .find(|(n, _)| *n == name)
+            .unwrap()
+            .1;
+        let mut app = App::new(Source::Text {
+            name: name.into(),
+            dsl: dsl.into(),
+        })
+        .unwrap();
         if field {
-            app.on_key(ratatui::crossterm::event::KeyEvent::from(ratatui::crossterm::event::KeyCode::Tab));
+            app.on_key(ratatui::crossterm::event::KeyEvent::from(
+                ratatui::crossterm::event::KeyCode::Tab,
+            ));
         }
         for (w, h) in [(120u16, 40u16), (200, 60)] {
             let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
@@ -19,7 +29,10 @@ fn main() {
                 term.draw(|f| app.draw(f)).unwrap();
             }
             let us = t0.elapsed().as_secs_f64() * 1e6 / frames as f64;
-            println!("{name:<8} {}  {w}x{h}  {us:>7.0} µs/frame (update + draw)", if field { "field" } else { "board" });
+            println!(
+                "{name:<8} {}  {w}x{h}  {us:>7.0} µs/frame (update + draw)",
+                if field { "field" } else { "board" }
+            );
         }
     }
 }
