@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blockies Lab</title>
+<style>
+:root{
+  --bg:#f4f3ee;--surface:#ffffff;--ink:#1c1c1f;--muted:#85827a;--line:#dcd9cf;--accent:#3b5bfd;--red:#e0464b;
+  --shadow:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.07);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f0f11;--surface:#1a1a1e;--ink:#ecebe6;--muted:#8e8b84;--line:#2d2d33;--accent:#6f8bff;--red:#ff6b6f;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  --bg:#0f0f11;--surface:#1a1a1e;--ink:#ecebe6;--muted:#8e8b84;--line:#2d2d33;--accent:#6f8bff;--red:#ff6b6f;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+#c{position:fixed;left:12px;top:12px;bottom:12px;width:min(360px,calc(100vw - 24px));background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+#c header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.chip{font:600 12px var(--mono);background:var(--ink);color:var(--bg);border-radius:6px;padding:3px 7px}
+#c header b{flex:1;font-weight:600}
+select{font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:8px;padding:5px 8px;cursor:pointer}
+#params{padding:8px 12px 4px;display:grid;gap:8px}
+#params:empty{display:none}
+#params label{display:grid;grid-template-columns:84px 1fr 36px;align-items:center;gap:8px;color:var(--muted)}
+#params output{font:12px var(--mono);color:var(--ink);text-align:right}
+input[type=range]{width:100%;accent-color:var(--accent)}
+#code{flex:1;resize:none;border:0;border-top:1px solid var(--line);margin-top:8px;background:transparent;color:var(--ink);font:11.5px/1.6 var(--mono);padding:10px 12px;white-space:pre;overflow:auto}
+#code:focus{outline:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#status{padding:8px 12px;border-top:1px solid var(--line);font:11.5px var(--mono);color:var(--muted)}
+#status.err{color:var(--red)}
+#c footer{padding:8px 12px;border-top:1px solid var(--line);color:var(--muted);font-size:11.5px}
+@media (max-width:760px){#c{top:auto;height:46vh}}
+</style>
+</head>
+<body>
+<canvas id="cv" aria-label="D blocks"></canvas>
+<section id="c" aria-label="Compute block">
+  <header><span class="chip">[c]</span><b>Compute block</b>
+    <select id="prog" aria-label="Program">
+      <option value="eiffel">Eiffel tower</option>
+      <option value="sort">Bubble sort</option>
+      <option value="wave">Waves</option>
+    </select>
+  </header>
+  <div id="params"></div>
+  <textarea id="code" spellcheck="false" aria-label="Compute program"></textarea>
+  <div id="status"></div>
+  <footer>The [c] program may only call <code>param()</code>, <code>g.fill()</code>, <code>g.rect()</code>. The [d] blocks decide how to get there.</footer>
+</section>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), ctx = cv.getContext('2d'), code = $('#code');
+
+const PROGRAMS = {
+eiffel: `// [c] computes a shape; [d] blocks compose themselves into it.
+const H = param('height', 16, 72, 48)
+const S = param('spread', 0.6, 1.6, 1)
+const deck1 = Math.round(H * 0.16), deck2 = Math.round(H * 0.42)
+for (let y = 0; y < H; y++) {
+  const t = y / H
+  const w = Math.round(Math.pow(1 - t, 2.3) * 20 * S) + 1
+  const arch = y < deck1 ? w * 0.62 * Math.sqrt(1 - y / deck1) : 0
+  for (let x = -w; x <= w; x++) {
+    if (Math.abs(x) < arch) continue
+    const edge = Math.abs(x) >= w - 1
+    const lattice = (x + y) % 4 === 0 || (x - y) % 4 === 0
+    if (edge || lattice || y === deck1 || y === deck2) g.fill(x, y, mix('#b8742f', '#f4d49a', t))
+  }
+}
+g.rect(0, H, 1, 4, '#ffcf6e')   // antenna
+`,
+sort: `// [c] runs a process over time; [d] blocks are the bars.
+// Bars carry ids, so swapping them makes real blocks travel.
+const n = param('bars', 8, 36, 22)
+const speed = param('speed', 1, 30, 10)
+if (!mem.a || mem.a.length !== n) {
+  mem.a = Array.from({length: n}, (_, k) => ({h: 3 + Math.floor(Math.random() * 38), id: k}))
+  mem.i = 0; mem.j = 0; mem.last = time; mem.doneAt = 0
+}
+const a = mem.a
+mem.last = Math.max(mem.last, time - 1)
+while (mem.i < n - 1 && time - mem.last > 1 / speed) {
+  mem.last += 1 / speed
+  if (a[mem.j].h > a[mem.j + 1].h) [a[mem.j], a[mem.j + 1]] = [a[mem.j + 1], a[mem.j]]
+  if (++mem.j >= n - 1 - mem.i) { mem.j = 0; mem.i++ }
+}
+if (mem.i >= n - 1) { mem.doneAt ||= time; if (time - mem.doneAt > 2) mem.a = null }
+const w = Math.max(1, Math.floor(76 / n) - 1)
+a.forEach((bar, k) => {
+  const hot = mem.i < n - 1 && (k === mem.j || k === mem.j + 1)
+  const done = k >= n - mem.i
+  g.rect(k * (w + 1) - Math.floor(n * (w + 1) / 2), 0, w, bar.h,
+    hot ? '#ff6b6f' : done ? '#33c58a' : '#8b90a8', 'bar' + bar.id)
+})
+`,
+wave: `// [c] recomputes every frame; [d] blocks flow between positions.
+const A = param('amplitude', 2, 22, 12)
+const F = param('frequency', 1, 8, 3)
+const T = param('trails', 1, 6, 4)
+for (let x = -40; x <= 40; x++) {
+  for (let k = 0; k < T; k++) {
+    const y = Math.round(28 + A * Math.sin(x * F / 25 + time * 2 - k * 0.3))
+    g.fill(x, y, mix('#4f7cff', '#3fe0c5', k / T), 'w' + x + ':' + k)  // id = same block every frame
+  }
+  if (x % 2 === 0) g.fill(x, 0, '#8b90a8')
+}
+`};
+
+/* ---------- colors ---------- */
+const hex = h => { h = h.replace('#',''); const n = parseInt(h.length === 3 ? [...h].map(c => c + c).join('') : h, 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const toHex = a => '#' + a.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+const mix = (a, b, t) => toHex(hex(a).map((v, i) => v + (hex(b)[i] - v) * Math.max(0, Math.min(1, t))));
+
+/* ---------- [d] blocks: a fixed pool of bodies ---------- */
+const N = 2600;
+const B = Array.from({length: N}, () => {
+  const k = 70 + Math.random() * 110;
+  return {x: 0, y: 0, vx: 0, vy: 0, tx: 0, ty: 0, a: 0, ta: 0, c: [139,144,168], tc: [139,144,168], k, d: 2 * Math.sqrt(k) * (0.55 + Math.random() * 0.2), key: null, ph: Math.random() * 6.28};
+});
+
+/* ---------- [c] program runtime ---------- */
+let fn = null, mem = {}, params = {}, declared = [], lastSig = '';
+function compile(){
+  try { fn = new Function('param', 'g', 'time', 'mem', 'mix', '"use strict";\n' + code.value); setStatus(''); mem = {}; }
+  catch (e) { fn = null; setStatus(e.message, true); }
+}
+function run(time){
+  if (!fn) return null;
+  const cells = new Map(), seen = [];
+  const param = (name, min, max, def) => { seen.push({name, min, max, def}); if (!(name in params)) params[name] = def; return params[name]; };
+  const g = {
+    fill(x, y, c = '#8b90a8', id){ x = Math.round(x); y = Math.round(y); const key = id ?? `${x},${y}`; cells.set(key, {x, y, c}); },
+    rect(x, y, w, h, c, id){ for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) g.fill(x + i, y + j, c, id != null ? `${id}:${i},${j}` : undefined); },
+  };
+  try { fn(param, g, time, mem, mix); }
+  catch (e) { setStatus(e.message, true); return null; }
+  const sig = seen.map(p => p.name + p.min + p.max).join('|');
+  if (sig !== lastSig) { lastSig = sig; declared = seen; buildParams(); }
+  return cells;
+}
+function buildParams(){
+  const box = $('#params'); box.innerHTML = '';
+  for (const p of declared) {
+    const step = Number.isInteger(p.min) && Number.isInteger(p.max) && Number.isInteger(p.def) ? 1 : 0.05;
+    const l = document.createElement('label');
+    l.innerHTML = `<span>${p.name}</span><input type="range" min="${p.min}" max="${p.max}" step="${step}" value="${params[p.name]}"><output>${params[p.name]}</output>`;
+    const inp = l.querySelector('input'), out = l.querySelector('output');
+    inp.oninput = () => { params[p.name] = +inp.value; out.textContent = inp.value; };
+    box.append(l);
+  }
+}
+function setStatus(m, err){ const s = $('#status'); s.textContent = m; s.classList.toggle('err', !!err); }
+
+/* ---------- assignment: keep identity, reuse freed blocks nearby ---------- */
+const owner = new Map(); // cell key -> block index
+function assign(cells){
+  const used = new Set(), fresh = [];
+  for (const [key, cell] of cells) {
+    const bi = owner.get(key);
+    if (bi != null && !used.has(bi)) { used.add(bi); place(bi, cell); } else fresh.push([key, cell]);
+  }
+  for (const [key, bi] of owner) if (!used.has(bi) || !cells.has(key)) owner.delete(key);
+  // freed blocks (visible but unowned) go first, nearest-column order, then the reserve inside [c]
+  const free = [];
+  for (let i = 0; i < N; i++) if (!used.has(i)) free.push(i);
+  free.sort((p, q) => (B[q].a > .1) - (B[p].a > .1) || B[p].x - B[q].x || B[p].y - B[q].y);
+  const visibleFree = free.filter(i => B[i].a > .1).length;
+  const head = free.slice(0, Math.min(visibleFree, fresh.length));
+  fresh.sort((p, q) => p[1].x - q[1].x || p[1].y - q[1].y);
+  // match visible freed blocks to the fresh cells in column order, the rest come out of [c]
+  const fromHead = fresh.slice(0, head.length), fromRes = fresh.slice(head.length);
+  fromHead.forEach(([key, cell], k) => { const bi = head[k]; used.add(bi); owner.set(key, bi); place(bi, cell); });
+  let r = head.length;
+  for (const [key, cell] of fromRes) {
+    if (r >= free.length) break;
+    const bi = free[r++]; used.add(bi); owner.set(key, bi);
+    if (B[bi].a < .05) { const s = reserve(); B[bi].x = s.x; B[bi].y = s.y; }
+    place(bi, cell);
+  }
+  for (let i = 0; i < N; i++) if (!used.has(i)) { const b = B[i]; b.ta = 0; if (b.a > .05 && !b.home) { const s = reserve(); b.tx = s.x; b.ty = s.y; b.home = true; } }
+  return Math.min(cells.size, N);
+}
+function place(bi, cell){ const b = B[bi]; b.tx = cell.x; b.ty = cell.y; b.ta = 1; b.tc = hex(cell.c); b.home = false; }
+
+/* ---------- layout: grid units <-> screen ---------- */
+let W, H, cell, ox, oy, panelR;
+function layout(){
+  const dpr = devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const r = $('#c').getBoundingClientRect(); panelR = r.right;
+  const mobile = W < 760, areaL = mobile ? 0 : panelR, areaB = mobile ? r.top : H;
+  cell = Math.max(3, Math.min(11, (areaB - 90) / 82, (W - areaL - 40) / 92));
+  ox = areaL + (W - areaL) / 2; oy = areaB - 40;
+}
+function reserve(){ // a spot inside the [c] block, in grid units
+  const r = $('#c').getBoundingClientRect();
+  return {x: (r.right - 30 - ox) / cell + (Math.random() - .5) * 2, y: (oy - (r.top + 22)) / cell + (Math.random() - .5) * 1.5};
+}
+addEventListener('resize', layout);
+
+/* ---------- loop ---------- */
+let last = performance.now(), t0 = last, acc = 0, count = 0;
+B.forEach(b => { const s = {x: 0, y: 0}; b.x = s.x; b.y = s.y; });
+function frame(now){
+  const dt = Math.min(0.033, (now - last) / 1000); last = now; acc += dt;
+  if (acc > 1 / 30) { acc = 0; const t = (now - t0) / 1000, s = performance.now(); const cells = run(t); if (cells) { count = assign(cells); if (!$('#status').classList.contains('err')) setStatus(`${cells.size} [d] blocks · ${(performance.now() - s).toFixed(1)} ms${cells.size > N ? ` · pool limit ${N}` : ''}`); } }
+  ctx.clearRect(0, 0, W, H);
+  // ground line
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--line'); ctx.fillRect(W < 760 ? 20 : panelR + 20, oy + cell * .5, W, 1);
+  const tt = now / 1000;
+  for (const b of B) {
+    const ax = b.k * (b.tx - b.x) - b.d * b.vx, ay = b.k * (b.ty - b.y) - b.d * b.vy;
+    b.vx += ax * dt; b.vy += ay * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+    b.a += (b.ta - b.a) * Math.min(1, dt * (b.ta ? 10 : 5));
+    for (let i = 0; i < 3; i++) b.c[i] += (b.tc[i] - b.c[i]) * Math.min(1, dt * 6);
+    if (b.a < .02) continue;
+    const speed = Math.hypot(b.vx, b.vy), breathe = 1 + Math.sin(tt * 1.6 + b.ph) * 0.03;
+    const s = cell * 0.84 * b.a * breathe * (1 + Math.min(.35, speed * .012));
+    const lift = Math.min(1, speed * .03);
+    ctx.globalAlpha = Math.min(1, b.a * 1.2);
+    ctx.fillStyle = `rgb(${(b.c[0] + (255 - b.c[0]) * lift * .35) | 0},${(b.c[1] + (255 - b.c[1]) * lift * .35) | 0},${(b.c[2] + (255 - b.c[2]) * lift * .35) | 0})`;
+    ctx.fillRect(ox + b.x * cell - s / 2, oy - b.y * cell - s / 2, s, s);
+  }
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(frame);
+}
+
+function load(name){ code.value = PROGRAMS[name]; params = {}; lastSig = ''; compile(); }
+$('#prog').onchange = e => load(e.target.value);
+let ct; code.addEventListener('input', () => { clearTimeout(ct); ct = setTimeout(compile, 250); });
+layout(); B.forEach(b => { const s = reserve(); b.x = b.tx = s.x; b.y = b.ty = s.y; });
+load('eiffel');
+requestAnimationFrame(frame);
+window.__blocks = {params, B, get count(){ return count; }, set(name, v){ params[name] = v; buildParams(); }};
+})();
+</script>
+</body>
+</html>

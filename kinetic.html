@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kinetic Board</title>
+<style>
+:root{
+  --bg:#f5f4ef;--surface:#ffffff;--ink:#1c1c1f;--muted:#8a877f;--line:#dcd9cf;--dot:#d6d3c8;
+  --accent:#3b5bfd;--green:#169a68;--amber:#d4870f;--red:#e0464b;--violet:#7c5cff;--teal:#0e97a5;--pink:#d4437d;
+  --note:#fff4b8;--shadow:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.06);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111113;--surface:#1b1b1f;--ink:#ecebe6;--muted:#8e8b84;--line:#2f2f35;--dot:#26262b;
+  --accent:#6f8bff;--green:#33c58a;--amber:#f0a63a;--red:#ff6b6f;--violet:#a08bff;--teal:#2fc0cf;--pink:#ff6ea6;
+  --note:#3a3420;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  --bg:#111113;--surface:#1b1b1f;--ink:#ecebe6;--muted:#8e8b84;--line:#2f2f35;--dot:#26262b;
+  --accent:#6f8bff;--green:#33c58a;--amber:#f0a63a;--red:#ff6b6f;--violet:#a08bff;--teal:#2fc0cf;--pink:#ff6ea6;
+  --note:#3a3420;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+#board{position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:default;user-select:none;-webkit-user-select:none}
+#board text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+.float{position:fixed;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+#top{top:12px;left:12px;display:flex;align-items:center;gap:4px;padding:5px;flex-wrap:wrap;max-width:calc(100vw - 24px)}
+#top .brand{font-weight:650;letter-spacing:-.01em;padding:0 8px 0 6px;display:flex;align-items:center;gap:6px}
+#top .brand i{width:9px;height:9px;border-radius:50%;background:var(--accent);display:inline-block;animation:breathe 2.4s ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(.6);opacity:.6}}
+button,select{font:inherit;color:inherit;background:transparent;border:0;border-radius:8px;padding:6px 9px;cursor:pointer}
+button:hover,select:hover{background:color-mix(in srgb,var(--ink) 7%,transparent)}
+button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.sep{width:1px;height:20px;background:var(--line);margin:0 3px}
+#panel{top:12px;right:12px;bottom:12px;width:min(400px,calc(100vw - 24px));display:flex;flex-direction:column;overflow:hidden;transition:transform .35s cubic-bezier(.2,.9,.2,1),opacity .25s}
+#panel.hidden{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
+#panel header{display:flex;align-items:center;gap:4px;padding:6px;border-bottom:1px solid var(--line)}
+#panel header b{flex:1;padding-left:8px;font-weight:600}
+#code{flex:1;resize:none;border:0;background:transparent;color:var(--ink);font:12px/1.65 var(--mono);padding:12px 14px;white-space:pre;overflow:auto;tab-size:2}
+#code:focus{outline:none}
+#errs{font:11.5px/1.5 var(--mono);color:var(--red);padding:0 14px;max-height:90px;overflow:auto}
+#errs:not(:empty){padding:8px 14px;border-top:1px solid var(--line)}
+#panel footer{padding:8px 14px;border-top:1px solid var(--line);color:var(--muted);font-size:11.5px}
+#steps{left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:5px;max-width:calc(100vw - 24px)}
+#caption{min-width:240px;max-width:420px;padding:0 10px;text-align:center;transition:opacity .2s,transform .2s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#caption.swap{opacity:0;transform:translateY(4px)}
+#count{color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px;padding:0 6px}
+#hint{position:fixed;left:14px;bottom:18px;color:var(--muted);font-size:11.5px;pointer-events:none;max-width:260px}
+#toast{position:fixed;top:64px;left:50%;transform:translateX(-50%) translateY(-8px);background:var(--ink);color:var(--bg);padding:7px 12px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%)}
+.primary{background:var(--accent);color:#fff}
+.primary:hover{background:color-mix(in srgb,var(--accent) 85%,#000)}
+@media (max-width:900px){#hint{display:none}#caption{min-width:120px}}
+@media (prefers-reduced-motion:reduce){#top .brand i{animation:none}}
+</style>
+</head>
+<body>
+<svg id="board" aria-label="Kinetic whiteboard">
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="var(--dot)"/></pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4"/></filter>
+  </defs>
+  <rect id="bgrect" width="100%" height="100%" fill="url(#dots)"/>
+  <g id="world"></g>
+</svg>
+
+<div id="top" class="float">
+  <span class="brand"><i></i>Kinetic</span>
+  <span class="sep"></span>
+  <button data-add="box" title="Box: a thing with states">Box</button>
+  <button data-add="arrow" title="Arrow: flow between two boxes">Arrow</button>
+  <button data-add="token" title="Token: travels along a route">Token</button>
+  <button data-add="switch">Switch</button>
+  <button data-add="slider">Slider</button>
+  <button data-add="bar">Bar</button>
+  <button data-add="card">Card</button>
+  <button data-add="note">Note</button>
+  <span class="sep"></span>
+  <button id="togglePanel" title="Show code (C)">Code</button>
+</div>
+
+<aside id="panel" class="float">
+  <header>
+    <b>Board code</b>
+    <select id="examples" aria-label="Load example">
+      <option value="">Examples…</option>
+      <option value="web">Web request</option>
+      <option value="water">Water cycle</option>
+      <option value="sprint">Sprint board</option>
+    </select>
+    <button id="copyPrompt" title="Copy instructions for an AI agent">Agent prompt</button>
+    <button id="closePanel" aria-label="Hide code">✕</button>
+  </header>
+  <textarea id="code" spellcheck="false" aria-label="Board code"></textarea>
+  <div id="errs"></div>
+  <footer>8 pieces, finite states. Paste an agent's output here and it comes alive.</footer>
+</aside>
+
+<div id="steps" class="float">
+  <button id="prev" aria-label="Previous step">←</button>
+  <button id="play" aria-label="Play steps">▶</button>
+  <button id="next" aria-label="Next step">→</button>
+  <span id="caption">Free play</span>
+  <span id="count"></span>
+  <button id="capture" title="Save current states as a step">+ Step</button>
+</div>
+<div id="hint">Drag a knob, bar top or token to move between its states · click a box or arrow to cycle · drag empty space to pan · scroll to zoom</div>
+<div id="toast"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const svg = $('#board'), world = $('#world'), code = $('#code');
+const NS = 'http://www.w3.org/2000/svg';
+
+/* ---------- theme colors (cached) ---------- */
+let C = {};
+function readTheme(){
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ['bg','surface','ink','muted','line','accent','green','amber','red','violet','teal','pink','note'])
+    C[k] = cs.getPropertyValue('--'+k).trim();
+}
+readTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTheme);
+
+const hex = h => { if (h.startsWith('rgb')) return h.match(/[\d.]+/g).slice(0,3).map(Number); h = h.replace('#',''); if (h.length===3) h = [...h].map(c=>c+c).join(''); const n = parseInt(h,16); return [n>>16&255, n>>8&255, n&255]; };
+const rgb = a => `rgb(${a.map(v=>Math.round(v)).join(',')})`;
+const mixA = (a,b,t) => a.map((v,i)=>v+(b[i]-v)*t);
+const mix = (c1,c2,t) => rgb(mixA(hex(c1),hex(c2),t));
+const lerp = (a,b,t) => a+(b-a)*t;
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const textW = (s, px=13) => String(s).length * px * 0.56;
+
+const SEM = {
+  green:['ok','up','done','on','healthy','active','warm','ready','live','pass','hit','open','success','green','full'],
+  amber:['busy','waiting','slow','doing','pending','warning','warn','review','loading','normal','partial','medium'],
+  red:['down','error','fail','failed','overloaded','blocked','dead','hot','spike','miss','closed','critical','high'],
+  neutral:['idle','off','todo','none','empty','quiet','new','inactive','cold','low','front','note'],
+};
+const FALLBACK = ['accent','violet','teal','pink'];
+function stateColor(name, i){
+  const n = String(name).toLowerCase();
+  for (const k in SEM) if (SEM[k].includes(n)) return k==='neutral' ? null : C[k];
+  return C[FALLBACK[i % FALLBACK.length]];
+}
+
+/* ---------- DSL ---------- */
+const TYPES = ['box','arrow','token','switch','slider','bar','card','note'];
+const KEYS = new Set(['at','size','states','values','on','back','state','offset']);
+const DEFAULT_STATES = {box:['idle'], arrow:['off','on'], switch:['off','on'], slider:['low','mid','high'], card:['front','back'], note:['note']};
+
+function tokenize(line){
+  const out = [], re = /"((?:[^"\\]|\\.)*)"|(\S+)/g; let m;
+  while ((m = re.exec(line))) out.push(m[1] !== undefined ? {s: m[1].replace(/\\n/g,'\n').replace(/\\"/g,'"')} : m[2]);
+  return out;
+}
+const num = t => { const v = Number(t); if (!isFinite(v)) throw `expected a number, got "${typeof t==='object'?t.s:t}"`; return v; };
+
+function parse(text){
+  const lines = text.split('\n'), P = [], L = [], S = [], errs = [], ids = new Set();
+  lines.forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || line.startsWith('```')) return;
+    const tk = tokenize(line), head = String(tk[0]).toLowerCase();
+    try {
+      if (head === 'link') {
+        const a = tk.indexOf('->'); if (a !== 2) throw 'use: link source -> target, target';
+        L.push({from: tk[1], to: tk.slice(a+1).join(' ').split(/[,\s]+/).filter(Boolean), line: i}); return;
+      }
+      if (head === 'step') {
+        const cap = typeof tk[1] === 'object' ? tk[1].s : '';
+        const set = tk.slice(cap ? 2 : 1).map(t => {
+          if (typeof t !== 'string' || !t.includes('=')) throw `step expects id=state, got "${t.s ?? t}"`;
+          const [id, state] = t.split('='); return {id, state};
+        });
+        S.push({caption: cap, set, line: i}); return;
+      }
+      if (!TYPES.includes(head)) throw `unknown piece "${head}" (allowed: ${TYPES.join(', ')})`;
+      const id = tk[1];
+      if (typeof id !== 'string' || !/^[A-Za-z_][\w-]*$/.test(id)) throw `${head} needs an id`;
+      if (ids.has(id)) throw `duplicate id "${id}"`;
+      const p = {type: head, id, line: i, x: 0, y: 0, hasAt: false};
+      let j = 2;
+      if (head === 'arrow') { if (tk[3] !== '->') throw 'use: arrow id from -> to'; p.from = tk[2]; p.to = tk[4]; j = 5; }
+      for (; j < tk.length; j++) {
+        const t = tk[j];
+        if (typeof t === 'object') { if (p.label === undefined) p.label = t.s; else throw `extra text "${t.s}"`; continue; }
+        switch (t) {
+          case 'at': p.x = num(tk[++j]); p.y = num(tk[++j]); p.hasAt = true; break;
+          case 'size': p.w = num(tk[++j]); p.h = num(tk[++j]); break;
+          case 'offset': p.ox = num(tk[++j]); p.oy = num(tk[++j]); break;
+          case 'states': p.states = String(tk[++j]).split('|').filter(Boolean); break;
+          case 'values': p.values = String(tk[++j]).split('|').map(num); break;
+          case 'state': p.init = String(tk[++j]); break;
+          case 'back': { const b = tk[++j]; if (typeof b !== 'object') throw 'back needs "quoted text"'; p.back = b.s; break; }
+          case 'on': {
+            const r = [];
+            while (j+1 < tk.length && typeof tk[j+1] === 'string' && !KEYS.has(tk[j+1])) r.push(tk[++j]);
+            p.on = r.join(' ').split(/[,\s]+/).filter(Boolean); break;
+          }
+          default: throw `unexpected "${t}"`;
+        }
+      }
+      if (head === 'token' && !(p.on && p.on.length)) throw 'token needs: on a, b, c';
+      if (head === 'bar' && !(p.values && p.values.length)) throw 'bar needs: values 10|50|90';
+      if (head === 'token') p.states = p.on.map((s,k)=>String(k));
+      else if (head === 'bar') p.states = p.values.map(String);
+      else if (head === 'card') p.states = ['front','back'];
+      else p.states = p.states || DEFAULT_STATES[head];
+      if (p.label === undefined) p.label = head === 'arrow' ? '' : id;
+      ids.add(id); P.push(p);
+    } catch (e) { errs.push(`line ${i+1}: ${e}`); }
+  });
+  const by = Object.fromEntries(P.map(p => [p.id, p]));
+  const keep = P.filter(p => {
+    if (p.type === 'arrow' && (!by[p.from] || !by[p.to])) { errs.push(`line ${p.line+1}: arrow "${p.id}" points to an unknown id`); return false; }
+    if (p.type === 'token') { const bad = p.on.find(o => !by[o] || by[o].type === 'token'); if (bad) { errs.push(`line ${p.line+1}: token route has unknown id "${bad}"`); return false; } }
+    return true;
+  });
+  const by2 = Object.fromEntries(keep.map(p => [p.id, p]));
+  const links = L.filter(l => { const ok = by2[l.from] && l.to.every(t => by2[t]); if (!ok) errs.push(`line ${l.line+1}: link uses an unknown id`); return ok; });
+  const steps = S.map(s => ({...s, set: s.set.filter(({id, state}) => {
+    const p = by2[id]; if (!p) { errs.push(`line ${s.line+1}: step uses unknown id "${id}"`); return false; }
+    if (resolveState(p, state) < 0) { errs.push(`line ${s.line+1}: "${id}" has no state "${state}" (has ${p.states.join('|')})`); return false; }
+    return true;
+  })}));
+  for (const p of keep) { const k = p.init != null ? resolveState(p, p.init) : 0; p.base = k < 0 ? 0 : k; }
+  return {pieces: keep, links, steps, errs};
+}
+function resolveState(p, v){
+  v = String(v);
+  const named = p.states.indexOf(v);
+  if (named >= 0) return named;
+  if (/^\d+$/.test(v) && +v < p.states.length) return +v;
+  return -1;
+}
+
+/* ---------- model ---------- */
+let pieces = [], byId = {}, links = [], steps = [], curStep = -1, driven = new Set();
+const view = {x: 0, y: 0, k: 1};
+
+function load(text, {fit = false, keepState = true} = {}){
+  const r = parse(text);
+  const old = byId;
+  pieces = r.pieces; links = r.links; steps = r.steps;
+  byId = Object.fromEntries(pieces.map(p => [p.id, p]));
+  for (const p of pieces) {
+    const o = old[p.id];
+    const n = p.states.length - 1;
+    if (keepState && o && o.type === p.type) { p.t = clamp(o.t, 0, n); p.target = clamp(Math.round(o.target), 0, n); p.v = o.v; p.phase = o.phase || 0; }
+    else { p.t = p.target = p.base; p.v = 0; p.phase = Math.random(); }
+  }
+  driven = new Set(links.flatMap(l => l.to));
+  $('#errs').textContent = r.errs.join('\n');
+  if (curStep >= steps.length) curStep = steps.length - 1;
+  updateStepUI(false);
+  if (fit) fitView();
+}
+
+/* ---------- geometry per piece ---------- */
+function boxSize(p){ return {w: p.w || Math.max(140, textW(p.label, 14) + 44), h: p.h || 64}; }
+function bounds(p){
+  switch (p.type) {
+    case 'box': { const s = boxSize(p); return {x: p.x, y: p.y, w: s.w, h: s.h}; }
+    case 'switch': return {x: p.x, y: p.y, w: 60, h: 34};
+    case 'slider': return {x: p.x, y: p.y, w: sliderW(p) + 30, h: 70};
+    case 'bar': return {x: p.x, y: p.y, w: 90, h: BAR_H + 70};
+    case 'card': return {x: p.x, y: p.y, w: p.w || 210, h: p.h || 120};
+    case 'note': { const ls = p.label.split('\n'); return {x: p.x, y: p.y, w: Math.max(...ls.map(l => textW(l))) + 32, h: ls.length * 19 + 26}; }
+    case 'token': { const q = tokenPos(p); return {x: q.x, y: q.y, w: 60, h: 26}; }
+    default: return {x: p.x, y: p.y, w: 40, h: 40};
+  }
+}
+function anchorTop(id){
+  const b = bounds(byId[id]);
+  return {x: b.x, y: b.y - b.h/2};
+}
+function edgePoint(b, tx, ty, pad = 8){
+  const dx = tx - b.x, dy = ty - b.y;
+  if (!dx && !dy) return {x: b.x, y: b.y};
+  const s = Math.min((b.w/2 + pad) / Math.abs(dx || 1e-9), (b.h/2 + pad) / Math.abs(dy || 1e-9));
+  return {x: b.x + dx*s, y: b.y + dy*s};
+}
+
+/* Every interactive piece exposes "handle points": where its handle sits in each state.
+   Dragging = projecting the pointer onto the path through those points (declarative dragging). */
+function tokenSegments(p){
+  const pts = p.on.map((id) => { const a = anchorTop(id); return {x: a.x + (p.ox||0), y: a.y + (p.oy||0)}; });
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i+1], d = Math.hypot(b.x-a.x, b.y-a.y);
+    const lift = b.x >= a.x ? 0.16*d + 22 : 0.32*d + 44;
+    segs.push({a, b, c: {x: (a.x+b.x)/2, y: Math.min(a.y,b.y) - lift}});
+  }
+  return {pts, segs};
+}
+const qb = (s, f) => ({x: (1-f)*(1-f)*s.a.x + 2*(1-f)*f*s.c.x + f*f*s.b.x, y: (1-f)*(1-f)*s.a.y + 2*(1-f)*f*s.c.y + f*f*s.b.y});
+function tokenPos(p, t = p.t){
+  const {pts, segs} = tokenSegments(p);
+  if (!segs.length) return pts[0];
+  t = clamp(t, 0, segs.length);
+  const i = Math.min(Math.floor(t), segs.length - 1);
+  return qb(segs[i], t - i);
+}
+const SW = 52, SH = 28, BAR_H = 150;
+const sliderW = p => Math.max(180, (p.states.length - 1) * 96);
+
+function handleSamples(p){
+  const out = [];
+  const line = (pts) => { for (let i = 0; i < pts.length - 1; i++) for (let k = 0; k <= 8; k++) { const f = k/8; out.push({x: lerp(pts[i].x, pts[i+1].x, f), y: lerp(pts[i].y, pts[i+1].y, f), t: i + f}); } };
+  switch (p.type) {
+    case 'token': { const {segs} = tokenSegments(p); segs.forEach((s, i) => { for (let k = 0; k <= 20; k++) { const q = qb(s, k/20); out.push({...q, t: i + k/20}); } }); break; }
+    case 'switch': line([{x: p.x - SW/2 + SH/2, y: p.y}, {x: p.x + SW/2 - SH/2, y: p.y}]); break;
+    case 'slider': { const w = sliderW(p); line(p.states.map((_, i) => ({x: p.x - w/2 + i * w / (p.states.length - 1 || 1), y: p.y}))); break; }
+    case 'bar': line(p.values.map(v => ({x: p.x, y: p.y + BAR_H/2 - clamp(v,0,100)/100*BAR_H}))); break;
+  }
+  return out;
+}
+function project(p, pt){
+  const s = handleSamples(p);
+  let best = null, bd = Infinity;
+  for (let i = 0; i < s.length - 1; i++) {
+    const a = s[i], b = s[i+1], dx = b.x - a.x, dy = b.y - a.y, L = dx*dx + dy*dy;
+    const f = L ? clamp(((pt.x-a.x)*dx + (pt.y-a.y)*dy) / L, 0, 1) : 0;
+    const x = a.x + dx*f, y = a.y + dy*f, t = lerp(a.t, b.t, f);
+    // continuity bias: prefer staying near the current state on routes that revisit places
+    const d = Math.hypot(pt.x - x, pt.y - y) + Math.abs(t - p.t) * 18 / view.k;
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best ?? p.t;
+}
+
+/* ---------- rendering ---------- */
+const stateMix = (p) => { const n = p.states.length - 1, t = clamp(p.t, 0, n), i = Math.min(Math.floor(t), Math.max(n - 1, 0)); return {i, f: n ? t - i : 0, t}; };
+function colorAt(p){
+  const {i, f} = stateMix(p);
+  const ca = stateColor(p.states[i], i) || C.muted, cb = stateColor(p.states[Math.min(i+1, p.states.length-1)], i+1) || C.muted;
+  const na = !stateColor(p.states[i], i), nb = !stateColor(p.states[Math.min(i+1,p.states.length-1)], i+1);
+  return {col: mix(ca, cb, f), neutral: lerp(na ? 1 : 0, nb ? 1 : 0, f)};
+}
+const DOTS = (n, t, cx, cy, col) => { if (n < 2) return ''; let s = ''; for (let k = 0; k < n; k++) { const a = clamp(1 - Math.abs(t - k), 0, 1); s += `<circle cx="${cx + (k - (n-1)/2) * 9}" cy="${cy}" r="${2.2 + a*1.3}" fill="${mix(C.line, col, a)}"/>`; } return s; };
+
+function drawBox(p){
+  const {w, h} = boxSize(p), {i, f, t} = stateMix(p), {col, neutral} = colorAt(p);
+  const bump = Math.sin(Math.PI * f) * 0.045, n = p.states.length;
+  const fill = mix(C.surface, col, 0.15 * (1 - neutral)), stroke = mix(mix(C.line, C.muted, .4), col, 1 - neutral);
+  const sa = p.states[i], sb = p.states[Math.min(i+1, n-1)];
+  const cur = n > 1, ty = h >= 120 ? -h/2 + 30 : (cur ? -3 : 5);
+  return `<g data-id="${p.id}" data-role="body" transform="translate(${p.x},${p.y}) scale(${1+bump})" style="cursor:pointer">
+    <rect x="${-w/2}" y="${-h/2}" width="${w}" height="${h}" rx="14" fill="${fill}" stroke="${stroke}" stroke-width="1.6"/>
+    <text text-anchor="middle" y="${ty}" font-size="14" font-weight="600" fill="${C.ink}">${esc(p.label)}</text>
+    ${cur ? `<g font-size="11" text-anchor="middle" fill="${mix(C.muted, col, 1 - neutral)}">
+      <text y="${ty + 18 + f*6}" opacity="${1-f}">${esc(sa)}</text><text y="${ty + 12 + f*6}" opacity="${f}">${esc(sb)}</text></g>
+      ${DOTS(n, t, 0, h/2 - 8, col)}` : ''}
+  </g>`;
+}
+function drawArrow(p){
+  const A = bounds(byId[p.from]), B = bounds(byId[p.to]);
+  const a = edgePoint(A, B.x, B.y, 6), b = edgePoint(B, A.x, A.y, 10);
+  const n = p.states.length - 1, s = n ? clamp(p.t, 0, n) / n : 1;
+  const {col, neutral} = colorAt(p);
+  const hot = mix(C.accent, col, neutral < .5 ? 1 : 0);
+  const stroke = mix(mix(C.line, C.muted, .5), hot, s);
+  const ang = Math.atan2(b.y - a.y, b.x - a.x), L = 9;
+  const hx = b.x, hy = b.y;
+  const head = `${hx},${hy} ${hx - L*Math.cos(ang - .45)},${hy - L*Math.sin(ang - .45)} ${hx - L*Math.cos(ang + .45)},${hy - L*Math.sin(ang + .45)}`;
+  let parts = '';
+  const k = 4;
+  if (s > 0.01) for (let j = 0; j < k; j++) { const u = (p.phase + j/k) % 1; parts += `<circle cx="${lerp(a.x,b.x,u)}" cy="${lerp(a.y,b.y,u)}" r="${2.5 + s*1.5}" fill="${hot}" opacity="${s * Math.sin(Math.PI*u)}"/>`; }
+  const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+  const {i, f} = stateMix(p);
+  const lab = p.label || (n ? (f < .5 ? p.states[i] : p.states[Math.min(i+1, n)]) : '');
+  return `<g data-id="${p.id}" data-role="body" style="cursor:pointer">
+    <line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="transparent" stroke-width="18"/>
+    <line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${stroke}" stroke-width="${1.5 + s*1.2}" stroke-linecap="round" ${s < .05 ? 'stroke-dasharray="4 5"' : ''}/>
+    <polygon points="${head}" fill="${stroke}"/>
+    ${parts}
+    ${lab ? `<g transform="translate(${mx},${my - 12})"><rect x="${-textW(lab,11)/2 - 6}" y="-9" width="${textW(lab,11) + 12}" height="17" rx="8.5" fill="${C.bg}" opacity=".92"/><text text-anchor="middle" y="3.5" font-size="11" fill="${mix(C.muted, hot, s)}">${esc(lab)}</text></g>` : ''}
+  </g>`;
+}
+function drawTokenTrack(p){
+  const {pts, segs} = tokenSegments(p);
+  const d = segs.map((s, i) => `${i ? '' : `M${s.a.x},${s.a.y}`} Q${s.c.x},${s.c.y} ${s.b.x},${s.b.y}`).join(' ');
+  const act = p === drag?.p ? .55 : .16;
+  const stops = pts.map((q, i) => { const a = clamp(1 - Math.abs(p.t - i), 0, 1); return `<circle cx="${q.x}" cy="${q.y}" r="${3 + a*2}" fill="${mix(C.line, C.accent, Math.max(a, act*.6))}"/>`; }).join('');
+  return `<path d="${d}" fill="none" stroke="${C.accent}" stroke-opacity="${act}" stroke-width="1.5" stroke-dasharray="3 5"/>${stops}`;
+}
+function drawToken(p){
+  const q = tokenPos(p), w = textW(p.label, 12) + 36;
+  const sq = clamp(Math.abs(p.v) * 0.035, 0, 0.18);
+  const lift = p === drag?.p ? 1.12 : 1;
+  return `<g data-id="${p.id}" data-role="handle" transform="translate(${q.x},${q.y}) scale(${(1+sq)*lift},${(1-sq*.6)*lift})" style="cursor:grab">
+    <rect x="${-w/2}" y="-13" width="${w}" height="26" rx="13" fill="${C.accent}" opacity=".35" filter="url(#glow)"/>
+    <rect x="${-w/2}" y="-13" width="${w}" height="26" rx="13" fill="${C.accent}"/>
+    <circle cx="${-w/2 + 12}" cy="0" r="3.5" fill="#fff" opacity=".85"/>
+    <text x="5" text-anchor="middle" y="4.5" font-size="12" font-weight="600" fill="#fff">${esc(p.label)}</text>
+  </g>`;
+}
+function drawSwitch(p){
+  const t = clamp(p.t, 0, 1), kx = -SW/2 + SH/2 + t * (SW - SH);
+  const on = stateColor(p.states[1], 1) || C.green;
+  const lock = driven.has(p.id);
+  return `<g transform="translate(${p.x},${p.y})">
+    <g data-id="${p.id}" data-role="body" style="cursor:pointer">
+      <rect x="${-SW/2}" y="${-SH/2}" width="${SW}" height="${SH}" rx="${SH/2}" fill="${mix(mix(C.line, C.surface, .2), on, t)}"/>
+      <text x="${SW/2 + 10}" y="-2" font-size="13" font-weight="600" fill="${C.ink}">${esc(p.label)}</text>
+      <text x="${SW/2 + 10}" y="13" font-size="11" fill="${C.muted}">${esc(p.states[Math.round(t)])}</text>
+    </g>
+    <circle data-id="${p.id}" data-role="${lock ? 'body' : 'handle'}" cx="${kx}" cy="0" r="${SH/2 - 3}" fill="#fff" stroke="rgba(0,0,0,.08)" style="cursor:${lock ? 'default' : 'grab'};filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))"/>
+  </g>`;
+}
+function drawSlider(p){
+  const w = sliderW(p), n = p.states.length - 1, t = clamp(p.t, 0, n), kx = -w/2 + (n ? t / n : 0) * w;
+  const lock = driven.has(p.id);
+  let ticks = '';
+  p.states.forEach((s, i) => { const x = -w/2 + (n ? i/n : 0) * w, a = clamp(1 - Math.abs(t - i), 0, 1);
+    ticks += `<circle cx="${x}" cy="0" r="3" fill="${x <= kx ? C.accent : C.line}"/><text x="${x}" y="26" text-anchor="middle" font-size="11" font-weight="${a > .5 ? 600 : 400}" fill="${mix(C.muted, C.ink, a)}">${esc(s)}</text>`; });
+  return `<g transform="translate(${p.x},${p.y})">
+    <g data-id="${p.id}" data-role="body" style="cursor:move">
+      <rect x="${-w/2 - 14}" y="-40" width="${w + 28}" height="76" fill="transparent"/>
+      <text x="${-w/2}" y="-18" font-size="13" font-weight="600" fill="${C.ink}">${esc(p.label)}</text>
+      <rect x="${-w/2}" y="-2.5" width="${w}" height="5" rx="2.5" fill="${C.line}"/>
+      <rect x="${-w/2}" y="-2.5" width="${Math.max(0, kx + w/2)}" height="5" rx="2.5" fill="${C.accent}"/>
+      ${ticks}
+    </g>
+    <circle data-id="${p.id}" data-role="${lock ? 'body' : 'handle'}" cx="${kx}" cy="0" r="10" fill="#fff" stroke="${C.accent}" stroke-width="2.5" style="cursor:${lock ? 'default' : 'grab'};filter:drop-shadow(0 1px 3px rgba(0,0,0,.2))"/>
+  </g>`;
+}
+function drawBar(p){
+  const n = p.values.length - 1, t = clamp(p.t, 0, n), i = Math.min(Math.floor(t), Math.max(n-1, 0));
+  const v = n ? lerp(p.values[i], p.values[i+1], t - i) : p.values[0], vh = clamp(v, 0, 100) / 100 * BAR_H;
+  const col = v < 50 ? mix(C.green, C.amber, v/50) : mix(C.amber, C.red, (v-50)/50);
+  const lock = driven.has(p.id), base = BAR_H/2;
+  let marks = '';
+  p.values.forEach(val => { const y = base - clamp(val,0,100)/100*BAR_H; marks += `<line x1="-30" x2="-24" y1="${y}" y2="${y}" stroke="${C.muted}" stroke-width="1"/>`; });
+  return `<g transform="translate(${p.x},${p.y})">
+    <g data-id="${p.id}" data-role="body" style="cursor:move">
+      <rect x="-22" y="${-base}" width="44" height="${BAR_H}" rx="10" fill="${mix(C.surface, C.line, .5)}"/>
+      <rect x="-22" y="${base - vh}" width="44" height="${vh}" rx="10" fill="${col}"/>
+      ${marks}
+      <text y="${base + 22}" text-anchor="middle" font-size="13" font-weight="600" fill="${C.ink}">${esc(p.label)}</text>
+      <text y="${base - vh - 10}" text-anchor="middle" font-size="12" font-weight="600" fill="${col}" style="font-variant-numeric:tabular-nums">${Math.round(v)}</text>
+    </g>
+    <rect data-id="${p.id}" data-role="${lock ? 'body' : 'handle'}" x="-16" y="${base - vh - 4}" width="32" height="8" rx="4" fill="#fff" stroke="${col}" stroke-width="2" style="cursor:${lock ? 'default' : 'ns-resize'}"/>
+  </g>`;
+}
+function wrap(s, max){ const out = []; for (const para of String(s).split('\n')) { let cur = ''; for (const w of para.split(' ')) { if ((cur + ' ' + w).trim().length > max) { out.push(cur.trim()); cur = w; } else cur += ' ' + w; } out.push(cur.trim()); } return out; }
+function drawCard(p){
+  const w = p.w || 210, h = p.h || 120, t = clamp(p.t, 0, 1), sx = Math.abs(Math.cos(Math.PI * t)), back = t > .5;
+  const txt = back ? (p.back || '') : p.label, lines = wrap(txt, Math.floor(w / 8));
+  const y0 = -((lines.length - 1) * 18) / 2 + 5;
+  return `<g data-id="${p.id}" data-role="body" transform="translate(${p.x},${p.y}) scale(${Math.max(sx, .02)},1)" style="cursor:pointer">
+    <rect x="${-w/2}" y="${-h/2}" width="${w}" height="${h}" rx="14" fill="${back ? mix(C.surface, C.accent, .12) : C.surface}" stroke="${back ? C.accent : mix(C.line, C.muted, .4)}" stroke-width="1.6"/>
+    ${lines.map((l, k) => `<text text-anchor="middle" y="${y0 + k*18}" font-size="${back ? 13 : 14}" font-weight="${back ? 400 : 600}" fill="${C.ink}">${esc(l)}</text>`).join('')}
+    <text x="${w/2 - 12}" y="${h/2 - 10}" text-anchor="end" font-size="10" fill="${C.muted}">${back ? 'back' : 'tap to flip'}</text>
+  </g>`;
+}
+function drawNote(p){
+  const b = bounds(p), ls = p.label.split('\n');
+  return `<g data-id="${p.id}" data-role="body" transform="translate(${p.x},${p.y}) rotate(-1.2)" style="cursor:move">
+    <rect x="${-b.w/2}" y="${-b.h/2}" width="${b.w}" height="${b.h}" rx="6" fill="${C.note}" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,.08))"/>
+    ${ls.map((l, k) => `<text x="${-b.w/2 + 16}" y="${-b.h/2 + 26 + k*19}" font-size="13" fill="${C.ink}">${esc(l)}</text>`).join('')}
+  </g>`;
+}
+const DRAW = {box: drawBox, arrow: drawArrow, token: drawToken, switch: drawSwitch, slider: drawSlider, bar: drawBar, card: drawCard, note: drawNote};
+const ORDER = ['note','arrow','box','card','switch','slider','bar','token'];
+
+function render(){
+  world.setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.k})`);
+  let s = '';
+  for (const p of pieces) if (p.type === 'token') s += drawTokenTrack(p);
+  for (const type of ORDER) for (const p of pieces) if (p.type === type) s += DRAW[type](p);
+  world.innerHTML = s;
+}
+
+/* ---------- physics loop ---------- */
+const K = 190, D = 21;
+let last = performance.now();
+function tick(now){
+  const dt = Math.min(0.033, (now - last) / 1000); last = now;
+  for (const p of pieces) {
+    if (drag?.p === p && drag.mode === 'state') continue;
+    const a = K * (p.target - p.t) - D * p.v;
+    p.v += a * dt; p.t += p.v * dt;
+    if (Math.abs(p.target - p.t) < 5e-4 && Math.abs(p.v) < 5e-3) { p.t = p.target; p.v = 0; }
+  }
+  for (const l of links) {
+    const src = byId[l.from], ns = src.states.length - 1, u = ns ? clamp(src.t, 0, ns) / ns : 0;
+    for (const id of l.to) { const d = byId[id], nd = d.states.length - 1; d.t = u * nd; d.target = Math.round(d.t); d.v = 0; }
+  }
+  for (const p of pieces) if (p.type === 'arrow') { const n = p.states.length - 1, s = n ? clamp(p.t, 0, n) / n : 1; p.phase = (p.phase + dt * (0.15 + 0.9 * s)) % 1; }
+  render();
+  requestAnimationFrame(tick);
+}
+
+/* ---------- interaction ---------- */
+let drag = null, userMoved = false;
+const toWorld = (cx, cy) => { const r = svg.getBoundingClientRect(); return {x: (cx - r.left - view.x) / view.k, y: (cy - r.top - view.y) / view.k}; };
+
+svg.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const el = e.target.closest('[data-id]');
+  svg.setPointerCapture(e.pointerId);
+  if (!el) { drag = {mode: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y}; svg.style.cursor = 'grabbing'; return; }
+  const p = byId[el.dataset.id];
+  if (el.dataset.role === 'handle' && !driven.has(p.id)) { drag = {mode: 'state', p}; p.v = 0; leaveSteps(); return; }
+  drag = {mode: 'press', p, sx: e.clientX, sy: e.clientY, px: p.x, py: p.y};
+});
+svg.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (drag.mode === 'pan') { userMoved = true; view.x = drag.vx + e.clientX - drag.sx; view.y = drag.vy + e.clientY - drag.sy; return; }
+  if (drag.mode === 'state') {
+    const pt = toWorld(e.clientX, e.clientY), t = project(drag.p, pt);
+    const now = performance.now(), dts = Math.max(0.008, (now - (drag.lt || now - 16)) / 1000);
+    drag.p.v = drag.p.v * 0.5 + 0.5 * (t - drag.p.t) / dts; drag.lt = now; drag.p.t = t; drag.p.target = t; return;
+  }
+  const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+  if (drag.mode === 'press' && Math.hypot(dx, dy) > 4 && drag.p.hasAt) drag.mode = 'move';
+  if (drag.mode === 'move') { drag.p.x = Math.round(drag.px + dx / view.k); drag.p.y = Math.round(drag.py + dy / view.k); }
+});
+const endDrag = () => {
+  if (!drag) return;
+  const {mode, p} = drag;
+  if (mode === 'state') { p.v = clamp(p.v, -8, 8); p.target = clamp(Math.round(p.t + p.v * 0.03), 0, p.states.length - 1); }
+  if (mode === 'press' && !driven.has(p.id) && p.states.length > 1) { p.target = (Math.round(p.target) + 1) % p.states.length; leaveSteps(); }
+  if (mode === 'move') writeAt(p);
+  drag = null; svg.style.cursor = '';
+};
+svg.addEventListener('pointerup', endDrag);
+svg.addEventListener('pointercancel', endDrag);
+svg.addEventListener('wheel', e => {
+  e.preventDefault(); userMoved = true;
+  const r = svg.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  if (!e.ctrlKey && !e.metaKey && Math.abs(e.deltaX) > Math.abs(e.deltaY) * .5 && e.deltaMode === 0 && Math.abs(e.deltaY) < 40) { view.x -= e.deltaX; view.y -= e.deltaY; return; }
+  const k = clamp(view.k * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)), 0.25, 3);
+  view.x = mx - (mx - view.x) * k / view.k; view.y = my - (my - view.y) * k / view.k; view.k = k;
+}, {passive: false});
+
+function writeAt(p){
+  const lines = code.value.split('\n'), l = lines[p.line];
+  if (l == null) return;
+  lines[p.line] = /\bat\s+-?[\d.]+\s+-?[\d.]+/.test(l) ? l.replace(/\bat\s+-?[\d.]+\s+-?[\d.]+/, `at ${p.x} ${p.y}`) : `${l} at ${p.x} ${p.y}`;
+  code.value = lines.join('\n'); save();
+}
+
+function fitView(){
+  if (!pieces.length) { view.x = 80; view.y = 80; view.k = 1; return; }
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of pieces) { if (p.type === 'arrow') continue; const b = bounds(p); x0 = Math.min(x0, b.x - b.w/2); x1 = Math.max(x1, b.x + b.w/2); y0 = Math.min(y0, b.y - b.h/2 - (p.type === 'box' ? 60 : 0)); y1 = Math.max(y1, b.y + b.h/2); }
+  const panel = !$('#panel').classList.contains('hidden') && innerWidth > 900 ? 424 : 0;
+  const W = innerWidth - panel - 40, H = innerHeight - 150;
+  const k = clamp(Math.min(W / (x1 - x0), H / (y1 - y0)), 0.3, 1.25);
+  view.k = k; view.x = 20 + (W - (x1 - x0) * k) / 2 - x0 * k; view.y = 64 + (H - (y1 - y0) * k) / 2 - y0 * k;
+}
+
+/* ---------- steps ---------- */
+function targetsAt(k){
+  const t = Object.fromEntries(pieces.map(p => [p.id, p.base]));
+  for (let s = 0; s <= k; s++) for (const {id, state} of steps[s].set) t[id] = resolveState(byId[id], state);
+  return t;
+}
+function goStep(k){
+  curStep = clamp(k, -1, steps.length - 1);
+  const t = targetsAt(curStep);
+  for (const p of pieces) if (!driven.has(p.id)) p.target = t[p.id];
+  updateStepUI(true);
+}
+function leaveSteps(){ if (playing) stopPlay(); }
+function updateStepUI(anim){
+  const cap = $('#caption');
+  const txt = curStep < 0 ? (steps.length ? 'Start — press → to walk through' : 'Free play — drag anything') : (steps[curStep].caption || `Step ${curStep + 1}`);
+  $('#count').textContent = steps.length ? `${curStep + 1} / ${steps.length}` : '';
+  if (!anim) { cap.textContent = txt; return; }
+  cap.classList.add('swap');
+  setTimeout(() => { cap.textContent = txt; cap.classList.remove('swap'); }, 160);
+}
+let playing = null;
+function stopPlay(){ clearInterval(playing); playing = null; $('#play').textContent = '▶'; }
+function togglePlay(){
+  if (playing) return stopPlay();
+  if (!steps.length) return toast('No steps yet: set things up, then press + Step');
+  if (curStep >= steps.length - 1) goStep(-1);
+  $('#play').textContent = '❚❚';
+  const adv = () => { if (curStep >= steps.length - 1) return stopPlay(); goStep(curStep + 1); };
+  setTimeout(adv, 350);
+  playing = setInterval(adv, 2200);
+}
+$('#prev').onclick = () => { stopPlay(); goStep(curStep - 1); };
+$('#next').onclick = () => { stopPlay(); goStep(curStep + 1); };
+$('#play').onclick = togglePlay;
+$('#capture').onclick = () => {
+  const prev = targetsAt(curStep < 0 ? -1 : steps.length - 1);
+  const diff = pieces.filter(p => !driven.has(p.id) && p.states.length > 1 && Math.round(p.target) !== prev[p.id])
+    .map(p => `${p.id}=${p.type === 'token' || p.type === 'bar' ? Math.round(p.target) : p.states[Math.round(p.target)]}`);
+  if (!diff.length) return toast('Nothing changed since the last step');
+  code.value = code.value.replace(/\s*$/, '') + `\nstep "Step ${steps.length + 1}" ${diff.join(' ')}\n`;
+  load(code.value); curStep = steps.length - 1; updateStepUI(true); save();
+  toast('Step saved: edit its caption in the code');
+};
+
+/* ---------- adding pieces ---------- */
+const uid = base => { let i = 1; while (byId[base + i]) i++; return base + i; };
+document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+  const type = b.dataset.add, c = toWorld(innerWidth / 2 - ($('#panel').classList.contains('hidden') ? 0 : 200), innerHeight / 2);
+  const x = Math.round(c.x + (Math.random() - .5) * 80), y = Math.round(c.y + (Math.random() - .5) * 80);
+  const boxes = pieces.filter(p => p.type === 'box');
+  let line;
+  switch (type) {
+    case 'box': line = `box ${uid('box')} "New box" at ${x} ${y} states idle|busy|done`; break;
+    case 'arrow': if (boxes.length < 2) return toast('Add two boxes first'); line = `arrow ${uid('arrow')} ${boxes.at(-2).id} -> ${boxes.at(-1).id} states off|on`; break;
+    case 'token': if (boxes.length < 2) return toast('Add two boxes first'); line = `token ${uid('token')} "item" on ${boxes.slice(-3).map(b => b.id).join(', ')}`; break;
+    case 'switch': line = `switch ${uid('switch')} "Toggle" at ${x} ${y}`; break;
+    case 'slider': line = `slider ${uid('slider')} "Level" at ${x} ${y} states low|mid|high`; break;
+    case 'bar': line = `bar ${uid('bar')} "Value" at ${x} ${y} values 15|50|90`; break;
+    case 'card': line = `card ${uid('card')} "Question?" back "Answer" at ${x} ${y}`; break;
+    case 'note': line = `note ${uid('note')} "A thought" at ${x} ${y}`; break;
+  }
+  code.value = code.value.replace(/\s*$/, '') + '\n' + line + '\n';
+  load(code.value); save();
+});
+
+/* ---------- panel / examples / agent prompt ---------- */
+let saveT;
+const save = () => { try { localStorage.setItem('kinetic.code', code.value); } catch {} };
+code.addEventListener('input', () => { clearTimeout(saveT); saveT = setTimeout(() => { load(code.value); save(); }, 220); });
+code.addEventListener('keydown', e => { if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, '  '); } });
+const togglePanel = () => { $('#panel').classList.toggle('hidden'); };
+$('#togglePanel').onclick = togglePanel; $('#closePanel').onclick = togglePanel;
+if (innerWidth < 900) $('#panel').classList.add('hidden');
+$('#examples').onchange = e => { const v = e.target.value; if (!v) return; code.value = EXAMPLES[v]; curStep = -1; load(code.value, {fit: true, keepState: false}); save(); e.target.value = ''; };
+
+const AGENT_PROMPT = `You are drawing on Kinetic, a whiteboard where every element is a small game piece with a FIXED set of states. Users drag pieces between their declared states and the board animates everything in between. You may only use the 8 pieces and 2 statements below. Anything that changes must be expressed as states.
+
+Reply with one code block of lines (no other syntax). Coordinates: x 0-1400, y 0-900; positions are piece centers. Keep ~140px gaps between boxes; put controls (switch/slider/bar) in a row below the diagram.
+
+box <id> "Label" at X Y [size W H] [states a|b|c] [state a]
+arrow <id> <fromId> -> <toId> [states off|on|busy] ["label"]
+token <id> "Label" on <id>, <id>, <id> [offset DX DY]   # travels a route over boxes; its state is the route index (0-based)
+switch <id> "Label" at X Y [states off|on] [state on]
+slider <id> "Label" at X Y states a|b|c
+bar <id> "Label" at X Y values 10|50|90                  # 0-100; one value per state
+card <id> "Front text" back "Back text" at X Y           # flips front|back
+note <id> "Text, use \\n for new lines" at X Y
+link <sourceId> -> <targetId>, <targetId>                  # targets follow the source's state proportionally (continuous while dragging)
+step "Caption" <id>=<state> <id>=<state>                   # cumulative steps, played like slides; token/bar states are numbers
+
+Rules:
+- ids: unique, lowercase, no spaces. Labels in "double quotes".
+- Box state names color themselves: ok/done/on/ready (green), busy/waiting/doing/review (amber), down/error/blocked/overloaded/spike (red), idle/off/todo/quiet (neutral). Other names get accent colors.
+- One token per thing that moves. A route may revisit boxes (e.g. a request and its response).
+- Never set a linked target inside a step; steps control only independent pieces.
+- Prefer 3-8 boxes, 0-3 controls, 3-7 steps that tell the story in order.
+
+Draw: `;
+$('#copyPrompt').onclick = async () => { try { await navigator.clipboard.writeText(AGENT_PROMPT); toast('Agent prompt copied: add your topic after "Draw:"'); } catch { code.value += '\n# ' + AGENT_PROMPT.split('\n').join('\n# '); toast('Clipboard blocked: prompt appended as comments'); } };
+
+let toastT;
+function toast(m){ const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200); }
+
+addEventListener('keydown', e => {
+  if (e.target === code) return;
+  if (e.key === 'ArrowRight') { stopPlay(); goStep(curStep + 1); }
+  else if (e.key === 'ArrowLeft') { stopPlay(); goStep(curStep - 1); }
+  else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  else if (e.key === 'c' || e.key === 'C') togglePanel();
+  else if (e.key === 'f' || e.key === 'F') { userMoved = false; fitView(); }
+});
+let resizeT;
+addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (!userMoved) fitView(); }, 120); });
+
+const EXAMPLES = {
+web: `# How a web request travels
+# Drag the token along its route. Slide traffic: CPU + API react. Flip the cache.
+box browser "Browser" at 120 220 states idle|waiting|done
+box cdn "CDN edge" at 420 220 states cold|warm
+box api "API server" at 720 220 states idle|busy|overloaded
+box db "Postgres" at 1020 220 states idle|busy
+arrow a1 browser -> cdn states off|on
+arrow a2 cdn -> api states off|on
+arrow a3 api -> db states off|on
+token req "GET /home" on browser, cdn, api, db, api, cdn, browser
+switch cache "Cache hit" at 380 430
+slider load "Traffic" at 640 430 states quiet|normal|spike
+bar cpu "API CPU" at 940 450 values 6|45|97
+link cache -> cdn
+link load -> cpu, api
+step "A user opens the page" browser=waiting a1=on
+step "The CDN edge checks its cache" req=1
+step "Cache miss: forwarded to the API" req=2 a2=on
+step "API asks the database" req=3 a3=on db=busy
+step "Response flows back to the browser" req=6 db=idle browser=done
+step "Next time, the cache answers" cache=on a2=off a3=off req=0 browser=idle
+`,
+water: `# The water cycle
+box ocean "Ocean" at 140 420 states calm|warm
+box cloud "Cloud" at 460 140 states thin|heavy|storm
+box mountain "Mountain" at 800 260 states dry|snowy
+box river "River" at 640 520 states low|flowing|flood
+arrow evap ocean -> cloud states off|slow|fast "evaporation"
+arrow rain cloud -> mountain states off|on "rain"
+arrow run mountain -> river states off|on
+arrow back river -> ocean states off|on
+token drop "droplet" on ocean, cloud, mountain, river, ocean
+slider sun "Sunlight" at 140 640 states weak|strong|scorching
+bar heat "Evaporation" at 1080 470 values 10|55|92
+link sun -> heat, evap
+card why "Why does rain fall?" back "Droplets merge until gravity beats the updraft." at 1040 150
+step "Sun warms the ocean" ocean=warm sun=1
+step "Water vapor rises and condenses" drop=1 cloud=heavy
+step "Rain falls on the mountain" drop=2 rain=on mountain=snowy
+step "Snowmelt feeds the river" drop=3 run=on river=flowing
+step "The river returns to the sea" drop=4 back=on
+`,
+sprint: `# Sprint board: tokens are tasks, boxes are lanes
+box todo "To do" at 160 300 size 220 300 states open|empty
+box doing "In progress" at 420 300 size 220 300 states idle|busy|overloaded
+box review "Review" at 680 300 size 220 300 states idle|waiting
+box done "Done" at 940 300 size 220 300 states none|shipped
+token t1 "Login page" on todo, doing, review, done offset 0 90
+token t2 "Billing API" on todo, doing, review, done offset 0 135
+token t3 "Dark mode" on todo, doing, review, done offset 0 180
+switch blocked "Blocked on design" at 180 560 states off|blocked
+note n1 "Drag a task between lanes.\\nPlay the steps to replay the sprint." at 600 560
+step "Monday: Login page starts" t1=1 doing=busy
+step "Billing joins, the lane fills up" t2=1 doing=overloaded
+step "Login goes to review" t1=2 review=waiting doing=busy
+step "Dark mode blocked" blocked=blocked
+step "Login ships" t1=3 done=shipped review=idle
+`};
+
+let initial = EXAMPLES.web;
+try { initial = localStorage.getItem('kinetic.code') || initial; } catch {}
+code.value = initial;
+load(initial, {fit: true, keepState: false});
+requestAnimationFrame(tick);
+window.__kinetic = {get pieces(){ return pieces; }, goStep, parse, view};
+})();
+</script>
+</body>
+</html>
