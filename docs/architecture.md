@@ -90,8 +90,12 @@ cargo run --release -p blockies-server --example load
 
 ## Next
 
-1. **Patch batching per tick** (one frame per board per tick instead of one per op). In the benchmark this raised the ceiling 4×.
-2. **Web runtime:** `packages/sdk-js` (`mount(canvas)`, `send(op)`, `on(event)`) over `blockies-wasm`, with a WebGL2 texture straight from `Field::pixels()`, and the app shell on top.
-3. **MCP:** `rmcp`, a thin adapter over `blockies-ops` mounted on the same axum app (same codes as the CLI).
-4. **Thinking pieces:** `[c]` programs that drive `[d]` bodies (`blockies-anim::Bodies`) with identity, as in `prototypes/blocks.html`.
-5. **Kani** proofs for sim invariants (mass conservation, walls never move) in CI.
+Ordered for the product direction in `AGENTS.md`: agents first, people watch through a link.
+
+1. **MCP:** `rmcp`, a thin adapter over `blockies-ops` mounted on the same axum app (same codes as the CLI). Each tool result carries the board's view link.
+2. **Incremental ops:** `add`, `remove` and `edit` for pieces, links and steps, so an agent can grow a board while the person talks instead of resending the whole DSL with `load`.
+3. **Web viewer:** a share link that opens in any browser with no install. It uses `packages/sdk-js` (`mount(canvas)`, `send(op)`, `on(event)`) over `blockies-wasm`, with a WebGL2 texture straight from `Field::pixels()`.
+4. **Accounts and auth:** API keys for agents and OAuth 2.1 for remote MCP, with boards owned by an account. This is what makes the hosted, commercial service possible.
+5. **Patch batching per tick** (one frame per board per tick instead of one per op). In the benchmark this raised the ceiling 4×.
+6. **Thinking pieces:** `[c]` programs that drive `[d]` bodies (`blockies-anim::Bodies`) with identity, as in `prototypes/blocks.html`.
+7. **Human editing UI** on the same `Op` layer. **Kani** proofs for sim invariants (mass conservation, walls never move) in CI.
