@@ -90,8 +90,12 @@ cargo run --release -p blockies-server --example load
 
 ## Next
 
-Ordered for the product direction in `AGENTS.md`: agents first, people watch through a link.
+Ordered for the product direction in `AGENTS.md`: the core first ("libghostty before ghostty"), then what agents need, while people watch through a link.
 
+0. **Core architecture, decided by people.** The v0.1 concepts are drafts taken from the prototypes. Three open questions:
+   - **Kinds of blockies:** are pieces and field blocks one concept, and what are `[c]` and `[d]` as types?
+   - **Sharing state:** today there is only one-to-one proportional `link` plus cumulative `step`. Open: many-to-one, rules, events or state, and pieces reading the field.
+   - **Visual interaction:** today only token routes and arrows. Open: containment, groups, collision, attachment, layout.
 1. **MCP:** `rmcp`, a thin adapter over `blockies-ops` mounted on the same axum app (same codes as the CLI). Each tool result carries the board's view link.
 2. **Incremental ops:** `add`, `remove` and `edit` for pieces, links and steps, so an agent can grow a board while the person talks instead of resending the whole DSL with `load`.
 3. **Web viewer:** a share link that opens in any browser with no install. It uses `packages/sdk-js` (`mount(canvas)`, `send(op)`, `on(event)`) over `blockies-wasm`, with a WebGL2 texture straight from `Field::pixels()`.
