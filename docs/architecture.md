@@ -61,7 +61,7 @@ HTTP (agents, CLI): `GET /api/boards`, `GET|PUT /api/boards/{board}` (PUT body =
 
 - Integer math only (`clippy::float_arithmetic` is denied in the crate), no clock, no `HashMap` iteration, randomness only from `mix(x, y, tick, seed)`.
 - The sleeping and parallel paths must give the same result as the serial, everything-awake path. Tests check this, including with paints.
-- Golden hashes match the Go/Rust benchmark spec. `scripts/wasm-determinism.mjs` checks that WASM matches native.
+- Golden hashes match the (discarded) Go/Rust benchmark spec. `scripts/wasm-determinism.mjs` checks that WASM matches native.
 
 ## Measured (Apple M4, release build)
 
@@ -90,8 +90,16 @@ cargo run --release -p blockies-server --example load
 
 ## Next
 
-1. **Patch batching per tick** (one frame per board per tick instead of one per op). In the benchmark this raised the ceiling 4×.
-2. **Web runtime:** `packages/sdk-js` (`mount(canvas)`, `send(op)`, `on(event)`) over `blockies-wasm`, with a WebGL2 texture straight from `Field::pixels()`, and the app shell on top.
-3. **MCP:** `rmcp`, a thin adapter over `blockies-ops` mounted on the same axum app (same codes as the CLI).
-4. **Thinking pieces:** `[c]` programs that drive `[d]` bodies (`blockies-anim::Bodies`) with identity, as in `prototypes/blocks.html`.
-5. **Kani** proofs for sim invariants (mass conservation, walls never move) in CI.
+Ordered for the product direction in `AGENTS.md`: the core first ("libghostty before ghostty"), then what agents need, while people watch through a link.
+
+0. **Core architecture, decided by people.** The v0.1 concepts are drafts taken from the prototypes. Three open questions:
+   - **Kinds of blockies:** are pieces and field blocks one concept, and what are `[c]` and `[d]` as types?
+   - **Sharing state:** today there is only one-to-one proportional `link` plus cumulative `step`. Open: many-to-one, rules, events or state, and pieces reading the field.
+   - **Visual interaction:** today only token routes and arrows. Open: containment, groups, collision, attachment, layout.
+1. **MCP:** `rmcp`, a thin adapter over `blockies-ops` mounted on the same axum app (same codes as the CLI). Each tool result carries the board's view link.
+2. **Incremental ops:** `add`, `remove` and `edit` for pieces, links and steps, so an agent can grow a board while the person talks instead of resending the whole DSL with `load`.
+3. **Web viewer:** a share link that opens in any browser with no install. It uses `packages/sdk-js` (`mount(canvas)`, `send(op)`, `on(event)`) over `blockies-wasm`, with a WebGL2 texture straight from `Field::pixels()`.
+4. **Accounts and auth:** API keys for agents and OAuth 2.1 for remote MCP, with boards owned by an account. This is what makes the hosted, commercial service possible.
+5. **Patch batching per tick** (one frame per board per tick instead of one per op). In the benchmark this raised the ceiling 4×.
+6. **Thinking pieces:** `[c]` programs that drive `[d]` bodies (`blockies-anim::Bodies`) with identity, as in `prototypes/blocks.html`.
+7. **Human editing UI** on the same `Op` layer. **Kani** proofs for sim invariants (mass conservation, walls never move) in CI.

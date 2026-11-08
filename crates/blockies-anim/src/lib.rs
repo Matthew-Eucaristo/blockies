@@ -47,7 +47,7 @@ impl Spring {
 }
 
 /// Many bodies as struct-of-arrays, written so LLVM vectorises the loop
-/// (3.5-4x faster per core than the same loop in Go, see blockies-bench).
+/// (3.5-4x faster per core than the same loop in Go, see docs/rust-pivot.md).
 #[derive(Clone, Debug, Default)]
 pub struct Bodies {
     pub x: Vec<f32>,

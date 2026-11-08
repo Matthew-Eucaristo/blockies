@@ -4,6 +4,14 @@ A living whiteboard: every visual is made of pieces with a finite, declared set 
 
 Co-created by Matthew and Edward Manhattan (original idea).
 
+## Product direction (decided 2026-11-07)
+
+- **Agent-driven first.** The main user of Blockies is an AI agent (for example Claude Code) that shows a person what it means by building and driving a board, at any complexity. People take part mostly by voice, through the agent, including while brainstorming.
+- **Commercial shape:** a hosted service that agents connect to with API keys or OAuth (MCP and HTTP), returning a link the person opens to watch the board live.
+- **Humans editing directly** (an easy, intuitive UI) comes later and must use the same `Op` layer as agents.
+- **Core before apps ("libghostty before ghostty").** The core crates (`blockies-model`, `-dsl`, `-ops`, `-sim`, `-anim`) come before infra such as MCP, auth and hosting. The core concepts (kinds of blockies, how they share state, how they interact visually) are decided by Matthew and Edward and must be fully understood by them. AI may brainstorm options and explain trade-offs, but must not settle core design on its own.
+- After that, prefer work that makes agents fast and correct: small incremental ops instead of whole-board rewrites, stable error codes, and a viewer that needs no install.
+
 ## Philosophy (invariants)
 
 - **Few choices, on purpose.** Agents get a small, closed set of primitives: 8 pieces and the statements `link`, `step` and `sim`. Fewer choices means valid, predictable output and no "illusion of choice". New primitives must justify themselves.
