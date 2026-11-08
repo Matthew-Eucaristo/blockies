@@ -10,7 +10,7 @@ export function mount(concept) {
   document.body.innerHTML = `
   <div class="app">
     <header><h1>${concept.title}</h1><span class="tag">${concept.tagline}</span>
-      <nav><a href="./">all concepts</a></nav></header>
+      <nav><a href="#">all concepts</a></nav></header>
     <section class="stagecol">
       <div class="toolbar">
         <button data-mode="flat" title="1">Flat</button>
@@ -48,16 +48,20 @@ export function mount(concept) {
   const variants = concept.variants ?? { default: concept.spec };
   const vnames = Object.keys(variants);
   const want = new URLSearchParams(location.search).get('v');
-  specEl.value = variants[vnames.includes(want) ? want : vnames[0]].trim();
+  let current = vnames.includes(want) ? want : vnames[0];
+  specEl.value = variants[current].trim();
   if (vnames.length > 1) {
     const sel = document.querySelector('#variant');
     sel.style.display = '';
     sel.innerHTML = vnames.map((n) => `<option ${n === want ? 'selected' : ''}>${n}</option>`).join('');
     sel.onchange = () => {
-      specEl.value = variants[sel.value].trim();
-      const u = new URL(location.href);
-      u.searchParams.set('v', sel.value);
-      history.replaceState(null, '', u);
+      current = sel.value;
+      specEl.value = variants[current].trim();
+      try {
+        const u = new URL(location.href);
+        u.searchParams.set('v', current);
+        history.replaceState(null, '', u);
+      } catch {}
       build();
     };
   }
@@ -70,8 +74,17 @@ export function mount(concept) {
     $('#err').textContent = '';
     try {
       const helpers = { ...L, ...(concept.helpers || {}) };
-      const fn = new Function(...Object.keys(helpers), `"use strict"; return (${specEl.value}\n);`);
-      const spec = fn(...Object.values(helpers));
+      let spec;
+      try {
+        const fn = new Function(...Object.keys(helpers), `"use strict"; return (${specEl.value}\n);`);
+        spec = fn(...Object.values(helpers));
+      } catch (e) {
+        // Some hosts forbid eval. The unedited specs are also shipped compiled.
+        const pre = concept.compiled?.[current];
+        if (!(e instanceof EvalError) || !pre) throw e;
+        if (specEl.value.trim() !== variants[current].trim()) throw new Error('This host blocks running edited specs. Run the explorations locally to edit them: python3 explorations/serve.py');
+        spec = pre(helpers);
+      }
       rt = concept.create(spec);
       if (spec.view) setMode(spec.view);
       stage.setShape(rt.shape);

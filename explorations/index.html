@@ -42,35 +42,35 @@
 
   <h2>The eight versions</h2>
   <div class="grid">
-    <a class="card" href="play.html?c=organism"><h3><span class="sw" style="background:#e0524f"></span>Organism <span class="n">1</span></h3>
+    <a class="card" href="#organism"><h3><span class="sw" style="background:#e0524f"></span>Organism <span class="n">1</span></h3>
       <p>Every computer is a pure function with a <b>body</b>. Props flow down and outputs flow up the tree. The shape is the state.</p>
       <p class="find">Found: a queue as a growing tail reads instantly, but bodies collide.</p>
       <div class="meta"><span>~1.8k chars</span><span>tree sharing</span></div></a>
-    <a class="card" href="play.html?c=messages"><h3><span class="sw" style="background:#3b6ff5"></span>Messages <span class="n">2</span></h3>
+    <a class="card" href="#messages"><h3><span class="sw" style="background:#3b6ff5"></span>Messages <span class="n">2</span></h3>
       <p>Computers are <b>actors</b>. Messages are tokens that walk the lattice, so distance is latency, and overload emerges as visible mailboxes.</p>
       <p class="find">Found: in a 1D world, Space-time is a sequence diagram nobody drew.</p>
       <div class="meta"><span>~2.0k chars</span><span>message sharing</span></div></a>
-    <a class="card" href="play.html?c=signals"><h3><span class="sw" style="background:#36c5f0"></span>Signals <span class="n">3</span></h3>
+    <a class="card" href="#signals"><h3><span class="sw" style="background:#36c5f0"></span>Signals <span class="n">3</span></h3>
       <p>Blocks only sense what they <b>touch</b>. Wires carry a fading level. The ASCII picture is the program, in 2D or 3D.</p>
       <p class="find">Found: a timing diagram for free, and that I (an LLM) wire things wrong.</p>
       <div class="meta"><span>~1.3k chars</span><span>adjacency sharing</span></div></a>
-    <a class="card" href="play.html?c=rules"><h3><span class="sw" style="background:#b9c1d0"></span>Rules <span class="n">4</span></h3>
+    <a class="card" href="#rules"><h3><span class="sw" style="background:#b9c1d0"></span>Rules <span class="n">4</span></h3>
       <p>A computer is a list of <b>rewrite rules</b> (data, not code). One rule grows a maze in 2D and a labyrinth in 3D.</p>
       <p class="find">Found: the tiniest programs, and a natural answer to who owns a cell.</p>
       <div class="meta"><span>~0.3k chars</span><span>shared space</span></div></a>
-    <a class="card" href="play.html?c=mind"><h3><span class="sw" style="background:#7a5af5"></span>Mind <span class="n">5</span></h3>
+    <a class="card" href="#mind"><h3><span class="sw" style="background:#7a5af5"></span>Mind <span class="n">5</span></h3>
       <p>An agent's work as a <b>living process tree</b>: one block per process; waiting is hatched; children grow around parents.</p>
       <p class="find">Found: the same run as a 1D world is a Gantt chart with the critical path.</p>
       <div class="meta"><span>~1.9k chars</span><span>spawn and results</span></div></a>
-    <a class="card" href="play.html?c=sheet"><h3><span class="sw" style="background:#2e9e6e"></span>Sheet <span class="n">6</span></h3>
+    <a class="card" href="#sheet"><h3><span class="sw" style="background:#2e9e6e"></span>Sheet <span class="n">6</span></h3>
       <p>A <b>spreadsheet in space</b>: formulas, declared finite states, and changes that travel as pulses you can follow.</p>
       <p class="find">Found: cause and effect are visible, but nothing is really a process.</p>
       <div class="meta"><span>~1.1k chars</span><span>formula reads</span></div></a>
-    <a class="card" href="play.html?c=kernel"><h3><span class="sw" style="background:#f2a33a"></span>Kernel <span class="n">7</span></h3>
+    <a class="card" href="#kernel"><h3><span class="sw" style="background:#f2a33a"></span>Kernel <span class="n">7</span></h3>
       <p>The <b>synthesis</b>: processes with bodies, talking only by messages. Agents say <i>what</i>; the lattice decides <i>where</i>.</p>
       <p class="find">Found: autoscaling becomes a shape, and the moat rule.</p>
       <div class="meta"><span>~2.9k chars</span><span>messages + bodies</span></div></a>
-    <a class="card" href="play.html?c=nest"><h3><span class="sw" style="background:#8a90a0"></span>Nest <span class="n">8</span></h3>
+    <a class="card" href="#nest"><h3><span class="sw" style="background:#8a90a0"></span>Nest <span class="n">8</span></h3>
       <p>A computer can <b>contain a world</b>. Complexity comes from depth, and every level stays small, with live miniatures.</p>
       <p class="find">Found: 25 computers, four levels, never more than six on screen.</p>
       <div class="meta"><span>~2.0k chars</span><span>containment</span></div></a>
@@ -158,5 +158,19 @@
   <h2>Run locally</h2>
   <p><code>python3 explorations/serve.py</code> from the repo root, then open <code>http://localhost:4319/explorations/</code>. The server disables caching so edits show up on reload.</p>
 </div>
+<script type="module">
+  // One page: the gallery, or a concept when the hash names one (#kernel).
+  const name = location.hash.slice(1).replace(/[^a-z0-9-]/g, '');
+  if (name) {
+    const { mount } = await import('./lib/shell.js');
+    const mod = await import(`./concepts/${name}.js`);
+    let compiled;
+    try {
+      compiled = (await import('./compiled.js')).default[name];
+    } catch {}
+    mount({ ...mod.default, compiled });
+  }
+  addEventListener('hashchange', () => location.reload());
+</script>
 </body>
 </html>

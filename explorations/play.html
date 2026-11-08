@@ -2,16 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blockies concept</title>
-<link rel="stylesheet" href="lib/shell.css">
-</head>
-<body>
-<script type="module">
-  import { mount } from './lib/shell.js';
-  const name = new URLSearchParams(location.search).get('c') || 'organism';
-  const mod = await import(`./concepts/${name.replace(/[^a-z0-9-]/g, '')}.js`);
-  mount(mod.default);
+<script>
+  const q = new URLSearchParams(location.search);
+  location.replace('./' + (q.get('v') ? '?v=' + encodeURIComponent(q.get('v')) : '') + '#' + (q.get('c') || 'organism'));
 </script>
-</body>
+</head>
+<body></body>
 </html>
