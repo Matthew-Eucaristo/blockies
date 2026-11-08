@@ -39,6 +39,7 @@ Full Rust, one Cargo workspace (`crates/`, see `docs/architecture.md`). The Go d
 - Live: `cargo run -p blockies-cli -- serve` (port 4318, `blockies.db`; `--memory` keeps nothing), then `blockies tui <board>`, `blockies new <board> <file>`, `blockies set|move|cycle|step|paint ...` with `--json`.
 - Benchmarks: `cargo run --release -p blockies-sim --example bench`, `-p blockies-tui --example render_bench`, `-p blockies-server --example load`.
 - Prototypes (reference only): `python3 -m http.server 4317`, then `/prototypes/kinetic.html` or `/prototypes/blocks.html`.
+- Explorations of the core idea (JS sketches, not the core): `python3 explorations/serve.py`, then `http://localhost:4319/explorations/`. Findings are in `explorations/README.md`.
 
 ## Verification
 

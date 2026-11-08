@@ -4,14 +4,35 @@
     {
       "name": "prototypes",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4317"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4317"
+      ],
       "port": 4317
     },
     {
       "name": "server",
       "runtimeExecutable": "cargo",
-      "runtimeArgs": ["run", "--release", "-p", "blockies-cli", "--", "serve", "--memory"],
+      "runtimeArgs": [
+        "run",
+        "--release",
+        "-p",
+        "blockies-cli",
+        "--",
+        "serve",
+        "--memory"
+      ],
       "port": 4318
+    },
+    {
+      "name": "explorations",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "explorations/serve.py",
+        "4319"
+      ],
+      "port": 4319
     }
   ]
 }

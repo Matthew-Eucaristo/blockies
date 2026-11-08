@@ -92,7 +92,7 @@ cargo run --release -p blockies-server --example load
 
 Ordered for the product direction in `AGENTS.md`: the core first ("libghostty before ghostty"), then what agents need, while people watch through a link.
 
-0. **Core architecture, decided by people.** The v0.1 concepts are drafts taken from the prototypes. Three open questions:
+0. **Core architecture, decided by people.** The v0.1 concepts are drafts taken from the prototypes. Eight playable options and their findings are in `explorations/` (with `blockies-lattice` as the rank-agnostic substrate). Three open questions:
    - **Kinds of blockies:** are pieces and field blocks one concept, and what are `[c]` and `[d]` as types?
    - **Sharing state:** today there is only one-to-one proportional `link` plus cumulative `step`. Open: many-to-one, rules, events or state, and pieces reading the field.
    - **Visual interaction:** today only token routes and arrows. Open: containment, groups, collision, attachment, layout.

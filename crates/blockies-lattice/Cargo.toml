@@ -1,0 +1,10 @@
+[package]
+name = "blockies-lattice"
+description = "A lattice that does not know its dimension (rank 1 to 4). Proposal from explorations/, not used by the core yet."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

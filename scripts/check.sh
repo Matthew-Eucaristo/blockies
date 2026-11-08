@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy -p blockies-wasm -p blockies-sim --no-default-features --target wasm32-unknown-unknown -- -D warnings
+cargo clippy -p blockies-wasm -p blockies-sim -p blockies-lattice --no-default-features --target wasm32-unknown-unknown -- -D warnings
 cargo test --workspace
 
 # Determinism across targets: the WASM build must reproduce the native hashes.

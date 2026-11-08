@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blockies Explorations</title>
+<link rel="stylesheet" href="lib/shell.css">
+<style>
+  body { overflow: auto; }
+  .page { max-width: 1040px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 18px; margin: 44px 0 12px; }
+  .lede { color: var(--muted); max-width: 760px; font-size: 15px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .card { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: inherit; transition: border-color .15s, transform .15s; }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card h3 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .card .n { font: 12px ui-monospace, monospace; color: var(--muted); }
+  .card p { margin: 0; font-size: 13.5px; }
+  .card .find { color: var(--muted); font-size: 13px; }
+  .card .meta { margin-top: auto; padding-top: 6px; font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .big { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--panel); border-radius: 8px; padding: 14px 18px; margin: 12px 0; }
+  .big h3 { margin: 0 0 6px; font-size: 15px; }
+  .big p { margin: 6px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.c { text-align: center; }
+  .scroll { overflow-x: auto; }
+  ol li, ul li { margin: 5px 0; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Blockies explorations</h1>
+  <p class="lede">Eight versions of the core idea, each built, played with and written up, to help Matthew and Edward decide. They all share one substrate: a lattice that never knows its own dimension, with renderers that decide whether it is a flat board, voxels, or a space-time sculpture. These are sketches in JavaScript, not the core: whatever is chosen gets built properly in the Rust crates.</p>
+  <p class="muted" style="font-size:13px">Each page has <b>Idea</b>, editable <b>Spec</b> (exactly what an agent would write, with its size) and <b>Notes</b> (what happened when I tried it). Keys: <code>1</code> flat, <code>2</code> voxel, <code>3</code> space-time, <code>space</code> pause, <code>.</code> step.</p>
+
+  <h2>The eight versions</h2>
+  <div class="grid">
+    <a class="card" href="play.html?c=organism"><h3><span class="sw" style="background:#e0524f"></span>Organism <span class="n">1</span></h3>
+      <p>Every computer is a pure function with a <b>body</b>. Props flow down and outputs flow up the tree. The shape is the state.</p>
+      <p class="find">Found: a queue as a growing tail reads instantly, but bodies collide.</p>
+      <div class="meta"><span>~1.8k chars</span><span>tree sharing</span></div></a>
+    <a class="card" href="play.html?c=messages"><h3><span class="sw" style="background:#3b6ff5"></span>Messages <span class="n">2</span></h3>
+      <p>Computers are <b>actors</b>. Messages are tokens that walk the lattice, so distance is latency, and overload emerges as visible mailboxes.</p>
+      <p class="find">Found: in a 1D world, Space-time is a sequence diagram nobody drew.</p>
+      <div class="meta"><span>~2.0k chars</span><span>message sharing</span></div></a>
+    <a class="card" href="play.html?c=signals"><h3><span class="sw" style="background:#36c5f0"></span>Signals <span class="n">3</span></h3>
+      <p>Blocks only sense what they <b>touch</b>. Wires carry a fading level. The ASCII picture is the program, in 2D or 3D.</p>
+      <p class="find">Found: a timing diagram for free, and that I (an LLM) wire things wrong.</p>
+      <div class="meta"><span>~1.3k chars</span><span>adjacency sharing</span></div></a>
+    <a class="card" href="play.html?c=rules"><h3><span class="sw" style="background:#b9c1d0"></span>Rules <span class="n">4</span></h3>
+      <p>A computer is a list of <b>rewrite rules</b> (data, not code). One rule grows a maze in 2D and a labyrinth in 3D.</p>
+      <p class="find">Found: the tiniest programs, and a natural answer to who owns a cell.</p>
+      <div class="meta"><span>~0.3k chars</span><span>shared space</span></div></a>
+    <a class="card" href="play.html?c=mind"><h3><span class="sw" style="background:#7a5af5"></span>Mind <span class="n">5</span></h3>
+      <p>An agent's work as a <b>living process tree</b>: one block per process; waiting is hatched; children grow around parents.</p>
+      <p class="find">Found: the same run as a 1D world is a Gantt chart with the critical path.</p>
+      <div class="meta"><span>~1.9k chars</span><span>spawn and results</span></div></a>
+    <a class="card" href="play.html?c=sheet"><h3><span class="sw" style="background:#2e9e6e"></span>Sheet <span class="n">6</span></h3>
+      <p>A <b>spreadsheet in space</b>: formulas, declared finite states, and changes that travel as pulses you can follow.</p>
+      <p class="find">Found: cause and effect are visible, but nothing is really a process.</p>
+      <div class="meta"><span>~1.1k chars</span><span>formula reads</span></div></a>
+    <a class="card" href="play.html?c=kernel"><h3><span class="sw" style="background:#f2a33a"></span>Kernel <span class="n">7</span></h3>
+      <p>The <b>synthesis</b>: processes with bodies, talking only by messages. Agents say <i>what</i>; the lattice decides <i>where</i>.</p>
+      <p class="find">Found: autoscaling becomes a shape, and the moat rule.</p>
+      <div class="meta"><span>~2.9k chars</span><span>messages + bodies</span></div></a>
+    <a class="card" href="play.html?c=nest"><h3><span class="sw" style="background:#8a90a0"></span>Nest <span class="n">8</span></h3>
+      <p>A computer can <b>contain a world</b>. Complexity comes from depth, and every level stays small, with live miniatures.</p>
+      <p class="find">Found: 25 computers, four levels, never more than six on screen.</p>
+      <div class="meta"><span>~2.0k chars</span><span>containment</span></div></a>
+  </div>
+
+  <h2>Three discoveries (things I only found by trying)</h2>
+  <div class="big"><h3>1. Diagrams are views of running worlds</h3>
+    <p>Because the lattice does not know its dimension, time can be one more axis. When I put actors on a <b>1D</b> world and stacked ticks, a <b>sequence diagram</b> appeared without anyone drawing it. The binary counter gave a <b>timing diagram</b>. The agent's process tree gave a <b>Gantt chart</b> with the critical path. In 2D, history became a <b>sculpture</b> you can look at.</p>
+    <p>So "the renderer decides" is bigger than 2D vs voxel. The classic diagrams developers draw by hand (sequence, Gantt, timing, flame graph) are projections of <i>world × time</i>. With Blockies you never draw them: you run the system and look at it from another angle, so the diagram cannot drift from reality.</p></div>
+  <div class="big"><h3>2. Agents should say what, never where</h3>
+    <p>In Signals I wired a lever backwards and left a diagonal gap. Both were coordinate mistakes, and agents will make them too. In Kernel the agent only says <i>how much</i> body a process has and which children it spawns. The lattice places everything, so that whole class of errors disappears. For an agent-driven product this matters more than any visual choice.</p></div>
+  <div class="big"><h3>3. Space must be owned, and cores need a moat</h3>
+    <p>Bodies collided in Organism and Messages. Rules answered it simply: first come, first served. Kernel then hit a subtler bug: a growing queue <b>buried</b> its own workers. The fix is a rule, <b>a body may never touch another computer's core</b>. It is a candidate answer to Edward's question "how do blockies interact visually": they push, flow around, and keep each other visible.</p></div>
+
+  <h2>Comparison</h2>
+  <div class="scroll"><table>
+    <tr><th></th><th>process = block</th><th>pure</th><th>children</th><th>shape is state</th><th>explains systems</th><th>generative</th><th>agent-friendly</th><th>any rank</th></tr>
+    <tr><td>Organism</td><td class="c">✓</td><td class="c">✓</td><td class="c">✓</td><td class="c">✓✓</td><td class="c">✓</td><td class="c">·</td><td class="c">~</td><td class="c">✓</td></tr>
+    <tr><td>Messages</td><td class="c">✓</td><td class="c">✓</td><td class="c">·</td><td class="c">~</td><td class="c">✓✓</td><td class="c">·</td><td class="c">~</td><td class="c">✓</td></tr>
+    <tr><td>Signals</td><td class="c">✓</td><td class="c">✓</td><td class="c">·</td><td class="c">~</td><td class="c">·</td><td class="c">✓</td><td class="c">✗ coordinates</td><td class="c">✓✓</td></tr>
+    <tr><td>Rules</td><td class="c">~</td><td class="c">✓✓</td><td class="c">·</td><td class="c">✓✓</td><td class="c">✗</td><td class="c">✓✓</td><td class="c">✓✓ tiny</td><td class="c">✓✓</td></tr>
+    <tr><td>Mind</td><td class="c">✓✓</td><td class="c">✓</td><td class="c">✓✓</td><td class="c">·</td><td class="c">✓</td><td class="c">·</td><td class="c">✓</td><td class="c">✓</td></tr>
+    <tr><td>Sheet</td><td class="c">✗</td><td class="c">✓</td><td class="c">·</td><td class="c">✓</td><td class="c">✓✓</td><td class="c">·</td><td class="c">✓✓ formulas</td><td class="c">✓</td></tr>
+    <tr><td>Kernel</td><td class="c">✓✓</td><td class="c">✓</td><td class="c">✓✓</td><td class="c">✓✓</td><td class="c">✓✓</td><td class="c">~</td><td class="c">✓ no coordinates</td><td class="c">✓</td></tr>
+    <tr><td>Nest</td><td class="c">✓</td><td class="c">–</td><td class="c">✓✓</td><td class="c">·</td><td class="c">✓</td><td class="c">·</td><td class="c">✓ paths</td><td class="c">✓ mixed</td></tr>
+  </table></div>
+  <p class="muted" style="font-size:12.5px">✓✓ strong · ✓ yes · ~ partly · · not its focus · ✗ weak. My judgement after playing, not a measurement.</p>
+
+  <h2>A candidate core (for discussion, not decided)</h2>
+  <p>If I had to propose one direction, it would be <b>Kernel + Nest + views</b>, with Rules as the engine for <code>[d]</code> materials:</p>
+  <ol>
+    <li><b>Lattice</b> of any rank; renderers decide (board, voxel, terminal, space-time diagrams, and even voice).</li>
+    <li><b>Computer <code>[c]</code></b> = one process = one block: a pure <code>step(state, io)</code> that may send, spawn, wait, finish or fail. A <b>kind</b> is a type of blockie.</li>
+    <li><b>Sharing</b> only by messages, including from people (a click or a voice command is a message). There are three state models: a computer's own state, messages, and the containing world.</li>
+    <li><b>Drawing <code>[d]</code></b>: a computer declares how much body it has; the lattice grows it through free space, with first come, first served and the moat rule. Rewrite rules can drive materials (sand, water, growth).</li>
+    <li><b>Nesting</b>: a computer may contain a world; messages cross levels only through the container.</li>
+    <li><b>Determinism</b> everywhere: same spec plus same inputs gives the same world. That gives replay, sharing a world as a link, and time travel, and it is what the Rust lockstep engine already does.</li>
+  </ol>
+
+  <div class="two">
+  <div>
+  <h2>Questions for Edward</h2>
+  <ol>
+    <li>In the sketch, block <b>1 is blue</b> and 2 and 3 are red. Is 1 a parent, a different kind, or selected?</li>
+    <li>Block <b>4 is hatched</b>. Waiting, sleeping, crashed, or not yet placed? (Mind and Kernel use hatched for waiting.)</li>
+    <li>What is the <b>blue vertical line</b> that runs past the frame? A timeline or playhead (Space-time would fit), a viewport edge, or a boundary between worlds?</li>
+    <li>Is <b>orange</b> the kind ([d]) or the owner? Owner tint made bodies much easier to tell apart.</li>
+    <li>Do [d] blocks belong to exactly one [c]? Can a [d] exist on its own (terrain, sand)?</li>
+    <li>Pure functions: is a computer's state <b>inside</b> it (actor style) or <b>passed in</b> and returned (Elm style)? Kernel does the second.</li>
+    <li>Is the green process bar part of the product, or only a diagram aid?</li>
+    <li>Which of the three discoveries fits the vision, and which does not?</li>
+  </ol>
+  </div>
+  <div>
+  <h2>Ideas not built yet</h2>
+  <ul>
+    <li><b>Agent adapter:</b> Claude Code hooks (tool calls, subagents) → Mind processes. A live view of a real agent.</li>
+    <li><b>Telemetry adapter:</b> OpenTelemetry spans → processes. Production as a living world.</li>
+    <li><b>Narrator renderer:</b> speaks the world ("the API queue is growing") for voice-first use.</li>
+    <li><b>Sound renderer:</b> each process a voice; load as pitch.</li>
+    <li><b>Fork and diff:</b> branch a world at tick t, run "what if", and colour the cells that differ.</li>
+    <li><b>Watchers:</b> invariants as computers that turn red (property tests you can see).</li>
+    <li><b>Capabilities:</b> a computer can only message what it holds a handle to (safety for agents).</li>
+    <li><b>Turtles:</b> computers that move and leave [d] trails; drawing as the path of a process.</li>
+    <li><b>Soft bodies:</b> [d] blocks on springs that wobble under load.</li>
+    <li><b>Algorithms in 1D:</b> sorting as a line, where Space-time shows each algorithm's signature.</li>
+    <li><b>Budgets:</b> compute or energy per computer, visible as body mass.</li>
+    <li><b>Orbit voxel renderer</b> (WebGPU) for real 3D, plus cutaways.</li>
+  </ul>
+  </div>
+  </div>
+
+  <h2>Where this could go</h2>
+  <p><b>The novel part is not the whiteboard.</b> It is <i>computation with a body</i>: every process is visible, its shape is its state, it is deterministic and replayable, and diagrams are views of it. Today code is invisible, observability is dashboards and logs, and diagrams are drawings that drift from the truth.</p>
+  <p><b>Why it is not AI slop:</b> slop is output that looks plausible and has no ground truth. A Blockies world <i>runs</i>, so it is either right or visibly wrong, and anyone can replay it and get the same hash. An agent that explains something by building a world is accountable in a way a generated picture is not.</p>
+  <p><b>Wedges that could make waves</b> (each one demo-able in a short video):</p>
+  <ol>
+    <li><b>Watch your agent think:</b> a live world of Claude Code's tool calls and subagents, with pause by click or voice.</li>
+    <li><b>Explorable explanations on demand:</b> "explain Raft" builds a world of nodes and messages, and the sequence diagram appears by itself.</li>
+    <li><b>Never draw a diagram again:</b> describe the system, run it, and switch views (board, sculpture, sequence, Gantt).</li>
+  </ol>
+  <p><b>As an OSS foundation:</b> a small deterministic kernel (Rust, WASM), an open world format and protocol, and pluggable renderers and kinds that others write (terminal, web, voxel, VR, sound). Each discovery above is also a technical blog post, which fits Edward's plan of building a name through writing and open source.</p>
+  <p><b>The risk:</b> "a world engine" is hard to explain. It needs one sharp first use case, and I would pick wedge 1 or 2.</p>
+
+  <h2>Run locally</h2>
+  <p><code>python3 explorations/serve.py</code> from the repo root, then open <code>http://localhost:4319/explorations/</code>. The server disables caching so edits show up on reload.</p>
+</div>
+</body>
+</html>

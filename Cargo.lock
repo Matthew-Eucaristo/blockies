@@ -257,6 +257,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "blockies-lattice"
+version = "0.1.0"
+
+[[package]]
 name = "blockies-model"
 version = "0.1.0"
 dependencies = [
