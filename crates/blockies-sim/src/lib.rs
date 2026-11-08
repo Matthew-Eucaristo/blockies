@@ -456,7 +456,7 @@ fn process_band(band: &mut [u8], flags: &mut [u8], awake: &[u8], w: usize, off: 
 mod tests {
     use super::*;
 
-    /// Same values as the blockies-bench spec (Go and Rust agreed on them).
+    /// Golden values from the Go vs Rust benchmark spec (both agreed on them).
     const GOLDEN_STORM_256: u64 = 0x6332_fb16_da4b_95fa;
     const GOLDEN_CALM_256: u64 = 0xcb6e_9b3b_8be9_36cf;
 

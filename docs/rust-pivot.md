@@ -123,7 +123,7 @@ Zig 0.17 (no 1.0 date) breaks code every minor release, and its WASM and WebGPU 
 
 ## Benchmark (2026-11-07)
 
-A separate repo, `blockies-bench` (local, not published yet), implements one spec in Go and Rust with the same algorithms, capacities and thread counts. Both produce identical sim hashes. Results on an Apple M4:
+A throwaway benchmark implemented one spec in Go and Rust with the same algorithms, capacities and thread counts. Both produced identical sim hashes. Results on an Apple M4:
 
 - **Blocks sim:** Rust was 1.2-1.35x faster at 1M-67M cells. Settled worlds tied (chunk sleeping dominates).
 - **Springs:** Rust was 3.5-4x faster on one core (auto-vectorisation).
@@ -132,7 +132,7 @@ A separate repo, `blockies-bench` (local, not published yet), implements one spe
 - **Where Go won or tied:** build time (4 s vs 23 s clean), and 200 writers contending on one tokio mpsc (Go was 1.6x faster).
 - **Network ceiling:** on macOS loopback both servers hit the same limit, about 300k packets/s. Per-tick batching raised it 4x for both.
 
-The Go code is gone from this repo. `blockies-bench` keeps both implementations for future comparisons.
+The decision is final: Blockies is full Rust. The benchmark code was discarded on 2026-11-09; these numbers are kept only as the record of why.
 
 ## First Rust spikes (done)
 

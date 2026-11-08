@@ -61,7 +61,7 @@ HTTP (agents, CLI): `GET /api/boards`, `GET|PUT /api/boards/{board}` (PUT body =
 
 - Integer math only (`clippy::float_arithmetic` is denied in the crate), no clock, no `HashMap` iteration, randomness only from `mix(x, y, tick, seed)`.
 - The sleeping and parallel paths must give the same result as the serial, everything-awake path. Tests check this, including with paints.
-- Golden hashes match the Go/Rust benchmark spec. `scripts/wasm-determinism.mjs` checks that WASM matches native.
+- Golden hashes match the (discarded) Go/Rust benchmark spec. `scripts/wasm-determinism.mjs` checks that WASM matches native.
 
 ## Measured (Apple M4, release build)
 
