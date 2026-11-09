@@ -75,7 +75,7 @@ export function path(a, b) {
   return out;
 }
 
-// Deterministic hash, the only source of randomness (same idea as the Rust sim).
+// Deterministic hash, the only source of randomness (no Math.random, so runs repeat).
 export function mix(...ns) {
   let h = 0x9e3779b9 >>> 0;
   for (const n of ns) {

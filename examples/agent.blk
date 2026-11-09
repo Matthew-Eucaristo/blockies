@@ -1,0 +1,43 @@
+# An agent's work as a living process tree: one block per process, children
+# placed around their parent. Try the Sequence view: it is a Gantt chart.
+kind task color=purple states=plan,wait,run,done,fail
+
+proc agent "Fix the login bug" kind=task
+agent = plan
+proc agent/search "search code" kind=task
+& proc agent/read "read auth.go" kind=task
+agent = wait
+agent/search = run
+& agent/read = run
+agent -> agent/search : find login handler
+wait 2
+agent/search -> agent : 3 files
+agent/search = done
+agent/read -> agent : token check is inverted
+agent/read = done
+end agent/search
+end agent/read
+proc agent/edit "edit auth.go" kind=task
+agent -> agent/edit : flip the check
+agent/edit = run
+wait 2
+agent/edit = done
+proc agent/test "go test ./auth" kind=task
+agent -> agent/test : run
+agent/test = run
+wait 2
+agent/test = fail
+note agent/test "TestExpired fails"
+agent/test -> agent : 1 failure
+agent = run
+agent -> agent/edit : handle expiry too
+agent/edit = run
+wait 1
+agent/edit = done
+agent -> agent/test : run again
+agent/test = run
+wait 2
+agent/test = done
+note agent/test "all green"
+agent/test -> agent : ok
+agent = done

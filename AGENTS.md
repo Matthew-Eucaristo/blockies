@@ -1,49 +1,49 @@
 # Blockies (working name)
 
-A living whiteboard: every visual is made of pieces with a finite, declared set of states, and everything animates between states. Humans draw and drag; AI agents author boards through a deliberately small vocabulary.
+Live boards that agents write and people watch. A board is a small world of processes (computers) that talk only by messages. An agent writes what happens in a tiny line-based script; the kernel places everything and runs it; the viewer shows the same run as a living world, as voxels, and as a sequence diagram with a timeline.
 
 Co-created by Matthew and Edward Manhattan (original idea).
 
-## Product direction (decided 2026-11-07)
+## Product direction
 
-- **Agent-driven first.** The main user of Blockies is an AI agent (for example Claude Code) that shows a person what it means by building and driving a board, at any complexity. People take part mostly by voice, through the agent, including while brainstorming.
-- **Commercial shape:** a hosted service that agents connect to with API keys or OAuth (MCP and HTTP), returning a link the person opens to watch the board live.
-- **Humans editing directly** (an easy, intuitive UI) comes later and must use the same `Op` layer as agents.
-- **Core before apps ("libghostty before ghostty").** The core crates (`blockies-model`, `-dsl`, `-ops`, `-sim`, `-anim`) come before infra such as MCP, auth and hosting. The core concepts (kinds of blockies, how they share state, how they interact visually) are decided by Matthew and Edward and must be fully understood by them. AI may brainstorm options and explain trade-offs, but must not settle core design on its own.
-- After that, prefer work that makes agents fast and correct: small incremental ops instead of whole-board rewrites, stable error codes, and a viewer that needs no install.
+- **Agent-driven first (2026-11-07).** The main user is an AI agent (for example Claude Code) showing a person what it means, at any complexity. People take part mostly by voice, through the agent.
+- **Commercial shape:** a hosted service agents connect to with API keys or OAuth (MCP and HTTP), returning a link the person opens to watch live. Humans editing directly comes later, through the same `boards.API`.
+- **Core before apps ("libghostty before ghostty").** The core packages (`lattice`, `script`, `kernel`) come before infra (auth, hosting).
+- **Direction and stack (2026-11-10).** Matthew chose the Kernel direction from `explorations/` (processes with bodies, messages only, agents say what not where, diagrams are views of a run) and moved the project to Go. The agent acts as CTO for stack and design choices. Changes to the script vocabulary or the core model are proposed with trade-offs to Matthew and Edward, who must understand the core fully.
 
-## Philosophy (invariants)
+## Invariants
 
-- **Few choices, on purpose.** Agents get a small, closed set of primitives: 8 pieces and the statements `link`, `step` and `sim`. Fewer choices means valid, predictable output and no "illusion of choice". New primitives must justify themselves.
-- **State is the unit of everything.** An element is a list of declared states plus how to draw each state. Animation, dragging, linking and playback all derive from that (inspired by Declarative Dragging, Blinn/Horowitz/Heer, UIST 2026).
-- **[c] computes, [d] composes.** Compute (`blockies-sim`, later programs) runs logic and only emits targets. Drawing (`blockies-anim`) moves bodies toward those targets with springs. Identity makes motion meaningful.
-- **The owner holds state, runtimes render it.** Runtimes may skip what they cannot draw. The block field runs in deterministic lockstep and is never streamed.
+- **Agents say what, never where.** Only the world size may have numbers in space. The kernel places cores (spread by declaration order, children next to their parent) and grows bodies.
+- **Few choices, on purpose.** The statement list in `script` is closed. A new statement must justify itself against what agents get wrong.
+- **Processes share nothing.** They talk only by messages, which take one tick. Rules belong to a process and stop when it ends.
+- **Time is an axis; diagrams are views.** The kernel emits one timeline; renderers decide how to show it. Never add a diagram type to the language.
+- **Space is owned.** Cores keep one free cell around them (diagonals included); a body never touches another process's core (the moat).
+- **The script is the board.** Stores keep scripts only. The server compiles on change and streams whole frames; nothing ticks on the server.
 
-## Stack (decided 2026-11-07)
+## Stack
 
-Full Rust, one Cargo workspace (`crates/`, see `docs/architecture.md`). The Go direction is gone; the reasons and the Go vs Rust benchmark are in `docs/rust-pivot.md`. TypeScript is allowed only at the edges: the JS SDK and the web app shell.
+Go 1.27, one module. MCP: `github.com/modelcontextprotocol/go-sdk` (stdio and streamable HTTP). HTTP: stdlib `net/http` with server-sent events. Viewer: plain ES modules with JSDoc, type-checked by TypeScript 7 (`tsc --checkJs`), embedded with `go:embed`, no build step. Lint: golangci-lint v2 (`.golangci.yml`). The last Rust version is tagged `rust-final`.
 
 ## Rules for changes
 
-- Every change to a board goes through `blockies_ops::Op` → `Doc::apply`. Do not add a second path in the server, the CLI, the TUI or MCP. Error `code`s are stable API for agents.
-- `blockies-model`, `-dsl`, `-ops`, `-sim` and `-protocol` stay free of I/O and clocks, so they still compile for `wasm32-unknown-unknown`.
-- The sim is integer-only (`clippy::float_arithmetic` is denied there): no clock, no `HashMap` iteration, randomness only from `mix()`. If a rule changes, update the golden hashes in `blockies-sim` tests and check the WASM determinism script.
-- Protocol changes bump `PROTOCOL` in `blockies-protocol` and update the table in `docs/architecture.md`.
-- `unsafe_code = "forbid"` applies workspace-wide, except `blockies-wasm`, where wasm-bindgen's glue needs it; that crate itself writes no unsafe code. Clippy runs with `-D warnings`.
-- DSL changes: the parser reports a bad line and keeps every valid line. `format()` must round-trip (`parse(format(b)) == b`).
+- Every board change goes through `boards.API` (implemented by `boards.Service` in process and `client.Client` over HTTP). `server`, `mcpserver` and the CLI are thin adapters; never add a second path. Error `code`s (script errors and API errors) are stable API for agents.
+- `lattice`, `script` and `kernel` stay pure: no clock, randomness, files or network, and they build for WebAssembly. `scripts/check.sh` enforces both.
+- Determinism: maps are for lookups only, never iterated into output. If kernel behaviour changes on purpose, update the golden hashes in `kernel/kernel_test.go`.
+- Timeline JSON changes bump `kernel.Version` and update `web/model.js` and `docs/architecture.md`.
+- Script changes: the parser reports a bad line and keeps every valid line; `Parse(Format(s)) == s`; update `script/guide.md` (agents read it through MCP and the CLI), and test a script with one invalid line.
+- Viewer: keep `tsc -p web` clean; no bundler or framework without a reason recorded in `docs/decisions.md`.
 
 ## Commands
 
-- Full check, the same as CI: `scripts/check.sh` (fmt, clippy native and wasm32, tests, native vs WASM hashes; needs Node).
-- Terminal, local: `cargo run -p blockies-cli -- tui --example web` (also `sandbox`, `water`, `sprint`) or `tui path/to/board.blk`.
-- Live: `cargo run -p blockies-cli -- serve` (port 4318, `blockies.db`; `--memory` keeps nothing), then `blockies tui <board>`, `blockies new <board> <file>`, `blockies set|move|cycle|step|paint ...` with `--json`.
-- Benchmarks: `cargo run --release -p blockies-sim --example bench`, `-p blockies-tui --example render_bench`, `-p blockies-server --example load`.
-- Prototypes (reference only): `python3 -m http.server 4317`, then `/prototypes/kinetic.html` or `/prototypes/blocks.html`.
-- Explorations of the core idea (JS sketches, not the core): `python3 explorations/serve.py`, then `http://localhost:4319/explorations/`. Findings are in `explorations/README.md`.
+- Full check, the same as CI: `scripts/check.sh` (gofmt, vet, golangci-lint if installed, race tests, core purity and WASM builds, viewer type check; needs Node).
+- Server: `go run ./cmd/blockies serve` (port 4318, boards in `~/.blockies/boards`; `--memory` keeps nothing; `--web web` serves the viewer from disk while editing it).
+- Examples: `go run ./cmd/blockies demo` loads `examples/*.blk` into the running server.
+- Offline: `go run ./cmd/blockies check FILE`, `render FILE [--tick N]`, `guide`.
+- Agent: `claude mcp add blockies -- blockies mcp` (uses a running server, or starts one for the session).
+- Explorations of the core idea (JS sketches, not the core): `python3 explorations/serve.py`, then `http://localhost:4319/explorations/`.
 
 ## Verification
 
-- Run `scripts/check.sh` after Rust changes.
-- For TUI changes, also run the TUI in a real terminal, and render tests with `ratatui::backend::TestBackend` at small and large sizes (no panics at 1×1).
-- For server or protocol changes, the integration tests in `crates/blockies-server/tests` must stay green: HTTP plus two WebSocket clients, and lockstep with a late joiner.
-- For DSL changes, include a board with one invalid line in a test. The error must be listed and every valid line must still load.
+- Run `scripts/check.sh` after changes.
+- Viewer changes: look at the examples in a browser in all three views (World, Voxel, Sequence), light and dark, and at phone width.
+- Server or MCP changes: `server/server_test.go` covers HTTP, the event stream and MCP over HTTP; also drive `blockies mcp` over stdio once.

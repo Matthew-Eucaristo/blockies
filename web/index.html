@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blockies</title>
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body class="index">
+<h1>Blockies</h1>
+<p class="lede">Live boards that agents write and people watch: processes that talk by messages, shown as a world, a sequence diagram and a timeline.</p>
+
+<h2>Boards</h2>
+<ul id="boards" class="cards"><li class="muted">Loading…</li></ul>
+
+<h2>Connect an agent</h2>
+<p>Claude Code (or any MCP client) can write boards and give you their links:</p>
+<pre>claude mcp add blockies -- blockies mcp</pre>
+<p>Or from a shell, which is what the MCP tools do too:</p>
+<pre>blockies write demo examples/checkout.blk
+blockies append demo 'api -> db : one more query'</pre>
+<p>Load the examples with <code>blockies demo</code>. The language: <a href="/api/guide">/api/guide</a>.</p>
+
+<script type="module">
+const ul = document.getElementById('boards');
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+try {
+  const { boards } = await (await fetch('/api/boards')).json();
+  ul.replaceChildren(...boards.map((b) => {
+    const li = document.createElement('li');
+    const errs = b.errors.length ? ` · <span class="bad">${b.errors.length} errors</span>` : '';
+    li.innerHTML = `<a href="/b/${encodeURIComponent(b.board)}"><b>${esc(b.board)}</b><span>${esc(b.summary)}${errs}</span></a>`;
+    return li;
+  }));
+  if (!boards.length) ul.innerHTML = '<li class="muted">No boards yet. Run <code>blockies demo</code>, or ask your agent to draw something.</li>';
+} catch {
+  ul.innerHTML = '<li class="muted">Could not reach the server.</li>';
+}
+</script>
+</body>
+</html>

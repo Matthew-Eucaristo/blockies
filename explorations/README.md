@@ -1,6 +1,6 @@
 # Explorations
 
-Eight playable versions of the Blockies core idea, built to help Matthew and Edward decide on the core architecture. These are JavaScript sketches, not the core. Whatever is chosen gets built in the Rust crates.
+Eight playable versions of the Blockies core idea, built to help Matthew and Edward decide on the core architecture. These are JavaScript sketches, not the core. The direction chosen from them (Kernel, with Nest and the views) is now the Go core at the repository root.
 
 ```bash
 python3 explorations/serve.py
@@ -27,7 +27,7 @@ Then open `http://localhost:4319/explorations/`. The index page has the cards, t
 
 ## Layout
 
-- `lib/lattice.js`: a lattice of any rank. Nothing in it names x, y or z. `crates/blockies-lattice` is the same idea in Rust (rank 1 to 4, deterministic, WASM-safe).
+- `lib/lattice.js`: a lattice of any rank. Nothing in it names x, y or z. The Go package `lattice` is the same idea in the real core (rank 1 to 4, deterministic, WASM-safe).
 - `lib/stage.js`: springs by identity plus renderers: flat, voxel (iso) and space-time (time as an axis; a 1D world draws as a 2D diagram).
 - `lib/shell.js`: page, clock, process bar, editable spec, and a purity check (runs each function twice).
 - `concepts/*.js`: one module per concept, with `idea`, `notes`, `spec` or `variants`, and `create(spec)`.

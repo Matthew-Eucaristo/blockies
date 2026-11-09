@@ -1,0 +1,21 @@
+# A database that answers one query per tick. During the burst requests come
+# in twice as fast, so its mailbox becomes a body you can see grow, then drain.
+kind store color=green states=idle,busy
+
+proc web "Web" color=blue
+proc api "API" color=red
+proc db "Postgres" kind=store
+
+cap db 1
+on api GET: api -> db : SELECT
+on db SELECT: db -> api : rows
+on api rows: api -> web : 200
+every 1: web -> api : GET; web -> api : GET
+note db "1 query per tick"
+note web "burst"
+wait 10
+note web "traffic drops"
+end web
+proc web "Web" color=blue
+every 3: web -> api : GET
+wait 14

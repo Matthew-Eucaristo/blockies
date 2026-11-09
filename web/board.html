@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board · Blockies</title>
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body class="board">
+<header class="bar">
+  <a class="home" href="/">Blockies</a>
+  <h1 id="name">board</h1>
+  <span id="live" class="live off" title="Live connection">connecting</span>
+  <span id="summary" class="muted"></span>
+</header>
+<nav class="tools" aria-label="Playback">
+  <div class="seg" role="group" aria-label="View">
+    <button data-view="world" title="The world, flat (1)">World</button>
+    <button data-view="voxel" title="The world as voxels (2)">Voxel</button>
+    <button data-view="sequence" title="Time as an axis: sequence diagram and timeline (3)">Sequence</button>
+  </div>
+  <div class="transport">
+    <button id="back" title="Previous tick (←)" aria-label="Previous tick">⏮</button>
+    <button id="play" title="Play or pause (space)" aria-label="Play">▶</button>
+    <button id="fwd" title="Next tick (→)" aria-label="Next tick">⏭</button>
+  </div>
+  <input id="scrub" type="range" min="0" max="1" step="0.01" value="0" aria-label="Time">
+  <span id="tick" class="tick">0 / 0</span>
+  <select id="speed" aria-label="Speed" title="Speed">
+    <option value="0.5">0.5×</option>
+    <option value="1" selected>1×</option>
+    <option value="2">2×</option>
+    <option value="4">4×</option>
+  </select>
+  <label class="check" title="Play new lines as the agent adds them (f)"><input id="follow" type="checkbox" checked> Follow</label>
+  <label id="sliceBox" class="check" hidden>Layer <input id="slice" type="range" min="0" max="0" value="0"></label>
+</nav>
+<main>
+  <div class="stage">
+    <canvas id="view" aria-label="Board view"></canvas>
+    <div id="empty" class="empty" hidden>
+      <p><b>This board is empty.</b> It fills in live as soon as an agent writes to it.</p>
+      <pre id="emptyHint"></pre>
+    </div>
+  </div>
+  <aside>
+    <section>
+      <h2>Processes</h2>
+      <ul id="procs" class="procs"></ul>
+    </section>
+    <section id="errBox" hidden>
+      <h2>Errors</h2>
+      <ul id="errors" class="errors"></ul>
+    </section>
+    <section>
+      <h2>Script</h2>
+      <ol id="script" class="script"></ol>
+    </section>
+  </aside>
+</main>
+<div id="tip" class="tip" hidden></div>
+<script type="module" src="/web/app.js"></script>
+</body>
+</html>

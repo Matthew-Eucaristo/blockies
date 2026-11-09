@@ -2,8 +2,8 @@
 .claude/settings.local.json
 node_modules/
 dist/
-/target/
 *.db
 *.db-wal
 *.db-shm
 /explorations/compiled.js
+/blockies

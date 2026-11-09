@@ -1,105 +1,90 @@
-# Architecture (v0.1, Rust)
+# Architecture
 
-Status: implemented in `crates/`, 2026-11-07. Why Rust and the lockstep model: [rust-pivot.md](rust-pivot.md).
+Status: implemented in Go, 2026-11-10. Why it looks like this: [decisions.md](decisions.md).
 
-## The two rules
-
-1. **The owner holds state, runtimes render it.** Every change goes through one board actor that validates it and broadcasts the result. Runtimes animate toward that state with springs, and skip whatever they cannot draw.
-2. **The block field runs in lockstep, it is never streamed.** The owner orders paints into ticks and broadcasts `(tick, paints)`. Every client runs the same deterministic sim and reports a hash now and then. A mismatch or a join is answered with a compressed snapshot.
+## Flow
 
 ```
-  agents ── blockies CLI ── HTTP ─┐
-                                  ▼
-  TUI ─┐                  ┌───────────────────────┐   SQLite
-  web ─┼── WebSocket v1 ──│ board actor (1/board) │── snapshot + op log
-  ... ─┘   ops ▲ ▼ patches│  Doc (ops) + World    │   (writer thread)
-               ticks      └───────────────────────┘
+  agent ── MCP (stdio or /mcp) ─┐
+  agent ── CLI ── HTTP ─────────┼──▶ boards.Service ──▶ Store (files or memory)
+  person ── viewer ◀── SSE ─────┘         │
+                                          ▼
+                              kernel.Compile(script) ─▶ Timeline ─▶ every viewer
 ```
 
-## Crates
+A board is its script. Every change replaces or extends the script; the service compiles it (pure; about 0.07 ms for the examples on an M4, `go test ./kernel -bench .`) and pushes the whole new frame to every viewer. The server keeps no running simulation: playback happens in the viewer.
 
-| Crate | Responsibility | I/O |
+## Packages
+
+| Package | Responsibility | I/O |
 |---|---|---|
-| `blockies-model` | The vocabulary: 8 piece kinds, states, links, steps, `sim` spec, materials, state tones | none (WASM-safe) |
-| `blockies-dsl` | Line DSL parser (per-line errors, valid lines still load), canonical formatter, agent prompt, examples | none |
-| `blockies-ops` | **The one command layer**: `Op` → validate → apply → `Patch`es. Links, cumulative steps, token moves, stable error codes | none |
-| `blockies-sim` | `[c]` block field: integer-only Margolus sand/water, 64×64 tiles, exact chunk sleeping, rayon tile rows (`parallel` feature) | none |
-| `blockies-anim` | `[d]` springs (`f32`, client-only) and struct-of-arrays bodies | none |
-| `blockies-protocol` | Wire messages (JSON, tag `t`), LZ4 snapshots, HTTP view types | none |
-| `blockies-store` | `Store` trait, with SQLite as its implementation: one snapshot row per board plus an append-only op log | SQLite |
-| `blockies-server` | axum: one tokio task per board, WebSocket clients, lockstep clock, REST for agents | network |
-| `blockies-tui` | ratatui runtime: boards with springs, the field as half-block pixels, local or live | terminal |
-| `blockies-cli` | The `blockies` binary: `serve`, `tui`, and agent commands with `--json` | all |
-| `blockies-wasm` | wasm-bindgen facade, the base for the JS SDK: `Field` (lockstep, `pixels()` pointer for WebGL), `check`, `formatDsl` | JS |
+| `lattice` | Shapes of rank 1 to 4, coordinates, face and Moore neighbours, deterministic nearest-free search | none |
+| `script` | Statements, parser (per-line errors, valid lines still load), canonical formatter, the agent guide (`guide.md`) | none |
+| `kernel` | Runs a script into a `Timeline`: schedule, rules, delivery, caps, placement, bodies | none |
+| `boards` | `API` (the one path for changes), `Service`, `Store` (`DirStore`, `MemStore`), live frames | store |
+| `server` | HTTP API, viewer pages, server-sent events, MCP over streamable HTTP | network |
+| `mcpserver` | MCP tools over `boards.API` | none |
+| `client` | `boards.API` over HTTP | network |
+| `web` | Viewer files, embedded | none |
+| `cmd/blockies` | `serve`, `mcp`, board commands, offline `check` and `render` | all |
 
-The first five crates hold no I/O and no clock, so they compile to `wasm32-unknown-unknown` and stay deterministic.
+`lattice`, `script` and `kernel` never import the clock, randomness, files or the network, and build for `js/wasm` and `wasip1/wasm` (checked in `scripts/check.sh`). A browser or another host can run the kernel itself later.
 
-## Protocol v1
+## Kernel semantics
 
-JSON text frames, one message per frame. Board names: 1-64 of `a-z 0-9 - _`.
+- **Time.** Lines happen in order at a cursor. A message is sent at the cursor and arrives one tick later; the cursor moves to its arrival. `&` starts a line at the same tick as the line above. `wait N` moves the cursor. Everything else happens at the cursor.
+- **Each tick:** scripted lines for this tick (in order), then `every` rules that are due, then delivery of arriving messages into mailboxes, then handling (up to `cap` messages per process, all if no cap), firing matching `on` rules, then bodies.
+- **Rules** belong to a process (`on db ...` to db; `every N: a -> ...` to a) and stop when it ends. Rule actions happen at the handling tick; their messages arrive one tick later. `$from` is the sender of the message being handled. A rule matches the first word of a message's label, or `*`.
+- **Placement.** Top-level processes are spread along axis 0 in declaration order, centered on the other axes (so the world view and the sequence view agree on order). Children go to the nearest free cell around their parent. A core needs every cell around it (diagonals included) free of other cores. Explicit `at` is allowed but discouraged.
+- **Bodies.** Size = `body N` plus messages waiting in the mailbox, at most 64. Cells grow breadth-first from the core and the body, never touching another process's core; they shrink from the newest cell.
+- **Errors** carry the line and a stable code. Parse codes: `syntax`, `bad_number`, `bad_id`, `bad_world`, `bad_color`, `bad_state`, `bad_action`, `too_long`. Run codes: `unknown_proc`, `dup_proc`, `no_parent`, `unknown_state`, `bad_ref`, `bad_at`, `no_room`, `dup_world`, `dup_kind`, `too_big`. A rule that fails every tick reports once.
+- **Limits:** 2000 ticks, 500 processes, 20000 messages, 64 body cells, 256 per world axis, 2^20 cells per world, 256 KiB per script.
+- Without a `world` line the world is `4n+1 × 15` for `n` top-level processes; viewers frame the part that is used.
 
-| Direction | Message | Purpose |
-|---|---|---|
-| server → client, on join | `welcome {protocol, board, you, rev, dsl, states, step, sim?}` | Full board, plus a field snapshot if the board has one |
-| client → server | `op {id, op}` | Any `blockies_ops::Op` (`set`, `move`, `cycle`, `step`, `load`, `paint`) |
-| server → sender | `ack {id, rev, warnings?}` / `reject {id, code, detail}` | Stable codes: `unknown_piece`, `unknown_state`, `driven`, `not_on_route`, `no_steps`, `bad_step`, `bad_board`, `no_sim` |
-| server → all | `patch {rev, by, patches}` | `state`, `step` or `board` (full replace) |
-| server → all | `tick {tick, paints}` | Apply the paints in order, then step once (before: `world.tick() == tick`) |
-| client → server | `hash {tick, hash}` every 30 ticks | Hex string (u64 does not fit a JS number) |
-| client → server / server → client | `resync` / `snapshot {sim}` | LZ4 + base64 cells at a tick |
+## Timeline (version 1)
 
-HTTP (agents, CLI): `GET /api/boards`, `GET|PUT /api/boards/{board}` (PUT body = DSL), `POST /api/boards/{board}/ops` (JSON op). Errors are `{code, detail}` with 4xx.
+```json
+{
+  "version": 1, "world": [17, 15], "end": 9,
+  "kinds":  [{"name": "store", "color": "green", "states": ["idle", "busy"]}],
+  "procs":  [{"id": "api", "label": "API", "kind": "", "color": "red", "parent": "", "at": [6, 7], "start": 0, "end": -1, "line": 6}],
+  "msgs":   [{"from": 0, "to": 1, "label": "GET /cart", "sent": 0, "arrive": 1, "handled": 1, "line": 10}],
+  "events": [{"t": 1, "e": "state", "p": 1, "state": "busy", "line": 11}, {"t": 4, "e": "body", "p": 3, "cells": [[19, 7]]}],
+  "errors": [{"line": 7, "code": "unknown_proc", "detail": "..."}]
+}
+```
 
-## Board actor
+`from`, `to` and `p` index `procs`. A process `end` of -1 means it runs to the end; `handled` of -1 means the message was never handled. The same id can appear twice if a process ended and started again.
 
-- Owns a `Doc` (pieces and states) and, if the DSL has `sim W H`, a `World`. No locks: it handles one command at a time from a bounded mailbox (4096).
-- **Fan-out:** each message is serialised once, and subscribers share it by refcount. A subscriber whose 512-frame outbox is full is dropped instead of slowing the board; it reconnects and resyncs.
-- **Lockstep clock:** 33 ms by default. It runs only while someone is watching a board that has a field. The owner keeps the last 64 hashes to check clients.
-- **Persistence:** every accepted non-paint op is committed (snapshot + log row) by one writer thread, in order. Actors never wait on disk. The field itself is not stored; the DSL plus seed define how it starts.
+## HTTP
 
-## Determinism rules (`blockies-sim`)
-
-- Integer math only (`clippy::float_arithmetic` is denied in the crate), no clock, no `HashMap` iteration, randomness only from `mix(x, y, tick, seed)`.
-- The sleeping and parallel paths must give the same result as the serial, everything-awake path. Tests check this, including with paints.
-- Golden hashes match the (discarded) Go/Rust benchmark spec. `scripts/wasm-determinism.mjs` checks that WASM matches native.
-
-## Measured (Apple M4, release build)
-
-| What | Number |
+| Method and path | Purpose |
 |---|---|
-| Field, everything moving, 17M cells, 10 threads | 0.64 ms/tick (26 G cells/s); serial 3.1 ms |
-| Field, settled world, 17M cells | 0.13 ms/tick (3% of tiles awake) |
-| TUI frame (update + draw), 200×60 | board 0.1 ms, field 0.23 ms |
-| WASM bundle (`release-wasm`, before `wasm-opt`) | 309 KB |
-| Live board, 100 clients × 10 ops/s (100k patches/s) | ack p50 15 ms, p99 29 ms, no drops |
-| Live board, 200 clients × 10 ops/s (400k patches/s) | saturates (p99 0.46 s, drops): macOS loopback limit, see rust-pivot.md |
+| `GET /` , `GET /b/{board}` | Board list and the viewer |
+| `GET /api/guide` | The language, as Markdown |
+| `GET /api/boards` | `{boards: [Result]}` |
+| `GET /api/boards/{board}` | `Result` with `script` |
+| `PUT /api/boards/{board}` | Body: the whole script. Creates the board |
+| `POST /api/boards/{board}/lines` | Body: lines to append. Bad lines come back in `rejected` and are not added |
+| `DELETE /api/boards/{board}` | Remove |
+| `GET /api/boards/{board}/frame` | `{board, rev, script, timeline}` |
+| `GET /api/boards/{board}/stream` | Server-sent events: `frame` now and after each change, `deleted` |
+| `/mcp` | MCP, streamable HTTP |
 
-Reproduce with:
+`Result` is `{board, rev, url, summary, errors, rejected?, script?}`. API errors are `{code, detail}` with codes `bad_board` (400), `not_found` (404), `too_big` (413), `bad_request`, `internal`. Board names are 1 to 64 of `a-z 0-9 - _`.
 
-```bash
-cargo run --release -p blockies-sim --example bench
-```
+## MCP tools
 
-```bash
-cargo run --release -p blockies-tui --example render_bench
-```
+`board_write {board, script}`, `board_append {board, lines}`, `board_read {board}`, `board_list {}`, `board_guide {}`. The server's instructions carry the whole guide, so most clients never need `board_guide`. `blockies mcp` (stdio) becomes a client of a running server, or starts one in the same process so the links work.
 
-```bash
-cargo run --release -p blockies-server --example load
-```
+## Viewer
+
+Plain ES modules (`web/*.js`), no build step, type-checked with `tsc --checkJs`. `model.js` answers questions about a timeline at any time; `world.js` draws the flat and voxel views (springs for things appearing and leaving, the camera framing the used part of the world); `sequence.js` draws lifelines, state bars and message arrows; `app.js` handles playback, live frames, panels and input. State words map to tones (busy, wait, good, bad) by a fixed word list; colors come from a fixed palette of eight.
 
 ## Next
 
-Ordered for the product direction in `AGENTS.md`: the core first ("libghostty before ghostty"), then what agents need, while people watch through a link.
-
-0. **Core architecture, decided by people.** The v0.1 concepts are drafts taken from the prototypes. Eight playable options and their findings are in `explorations/` (with `blockies-lattice` as the rank-agnostic substrate). Three open questions:
-   - **Kinds of blockies:** are pieces and field blocks one concept, and what are `[c]` and `[d]` as types?
-   - **Sharing state:** today there is only one-to-one proportional `link` plus cumulative `step`. Open: many-to-one, rules, events or state, and pieces reading the field.
-   - **Visual interaction:** today only token routes and arrows. Open: containment, groups, collision, attachment, layout.
-1. **MCP:** `rmcp`, a thin adapter over `blockies-ops` mounted on the same axum app (same codes as the CLI). Each tool result carries the board's view link.
-2. **Incremental ops:** `add`, `remove` and `edit` for pieces, links and steps, so an agent can grow a board while the person talks instead of resending the whole DSL with `load`.
-3. **Web viewer:** a share link that opens in any browser with no install. It uses `packages/sdk-js` (`mount(canvas)`, `send(op)`, `on(event)`) over `blockies-wasm`, with a WebGL2 texture straight from `Field::pixels()`.
-4. **Accounts and auth:** API keys for agents and OAuth 2.1 for remote MCP, with boards owned by an account. This is what makes the hosted, commercial service possible.
-5. **Patch batching per tick** (one frame per board per tick instead of one per op). In the benchmark this raised the ceiling 4×.
-6. **Thinking pieces:** `[c]` programs that drive `[d]` bodies (`blockies-anim::Bodies`) with identity, as in `prototypes/blocks.html`.
-7. **Human editing UI** on the same `Op` layer. **Kani** proofs for sim invariants (mass conservation, walls never move) in CI.
+1. **Hosted service:** accounts, API keys for agents, OAuth for remote MCP, boards owned by an account, a public base URL.
+2. **People steering:** clicks become messages to processes (the same door agents use), so a person can poke a running board.
+3. **Nest:** a process that contains a world, shown as a live miniature that you can enter.
+4. **Incremental frames** (send only what changed) once boards get large; SQLite store (`modernc.org/sqlite`) when files stop being enough.
+5. **Export:** a board as a static page, SVG sequence diagram, or GIF for docs and PRs.

@@ -37,7 +37,7 @@
 <body>
 <div class="page">
   <h1>Blockies explorations</h1>
-  <p class="lede">Eight versions of the core idea, each built, played with and written up, to help Matthew and Edward decide. They all share one substrate: a lattice that never knows its own dimension, with renderers that decide whether it is a flat board, voxels, or a space-time sculpture. These are sketches in JavaScript, not the core: whatever is chosen gets built properly in the Rust crates.</p>
+  <p class="lede">Eight versions of the core idea, each built, played with and written up, to help Matthew and Edward decide. They all share one substrate: a lattice that never knows its own dimension, with renderers that decide whether it is a flat board, voxels, or a space-time sculpture. These are sketches in JavaScript, not the core. The direction chosen from them (Kernel, with Nest and the views) is now the Go core of the repository.</p>
   <p class="muted" style="font-size:13px">Each page has <b>Idea</b>, editable <b>Spec</b> (exactly what an agent would write, with its size) and <b>Notes</b> (what happened when I tried it). Keys: <code>1</code> flat, <code>2</code> voxel, <code>3</code> space-time, <code>space</code> pause, <code>.</code> step.</p>
 
   <h2>The eight versions</h2>
@@ -107,7 +107,7 @@
     <li><b>Sharing</b> only by messages, including from people (a click or a voice command is a message). There are three state models: a computer's own state, messages, and the containing world.</li>
     <li><b>Drawing <code>[d]</code></b>: a computer declares how much body it has; the lattice grows it through free space, with first come, first served and the moat rule. Rewrite rules can drive materials (sand, water, growth).</li>
     <li><b>Nesting</b>: a computer may contain a world; messages cross levels only through the container.</li>
-    <li><b>Determinism</b> everywhere: same spec plus same inputs gives the same world. That gives replay, sharing a world as a link, and time travel, and it is what the Rust lockstep engine already does.</li>
+    <li><b>Determinism</b> everywhere: same spec plus same inputs gives the same world. That gives replay, sharing a world as a link, and time travel, and the Go kernel keeps it: compiling a script is pure and gives the same timeline everywhere.</li>
   </ol>
 
   <div class="two">
@@ -152,7 +152,7 @@
     <li><b>Explorable explanations on demand:</b> "explain Raft" builds a world of nodes and messages, and the sequence diagram appears by itself.</li>
     <li><b>Never draw a diagram again:</b> describe the system, run it, and switch views (board, sculpture, sequence, Gantt).</li>
   </ol>
-  <p><b>As an OSS foundation:</b> a small deterministic kernel (Rust, WASM), an open world format and protocol, and pluggable renderers and kinds that others write (terminal, web, voxel, VR, sound). Each discovery above is also a technical blog post, which fits Edward's plan of building a name through writing and open source.</p>
+  <p><b>As an OSS foundation:</b> a small deterministic kernel (Go, also built for WASM), an open world format and protocol, and pluggable renderers and kinds that others write (terminal, web, voxel, VR, sound). Each discovery above is also a technical blog post, which fits Edward's plan of building a name through writing and open source.</p>
   <p><b>The risk:</b> "a world engine" is hard to explain. It needs one sharp first use case, and I would pick wedge 1 or 2.</p>
 
   <h2>Run locally</h2>
