@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/Matthew-Eucaristo/blockies/agent"
 	"github.com/Matthew-Eucaristo/blockies/boards"
 	"github.com/Matthew-Eucaristo/blockies/client"
 	"github.com/Matthew-Eucaristo/blockies/examples"
@@ -45,7 +47,7 @@ const (
 const usage = `blockies: live boards that agents write and people watch.
 
 Server:
-  blockies serve [--addr 127.0.0.1:4318] [--dir DIR | --memory]
+  blockies serve [--addr 127.0.0.1:4318] [--dir DIR | --memory] [--model ID] [--effort LEVEL]
   blockies mcp   [--server URL]          MCP over stdio (starts a server if none is running)
 
 Boards (talk to the server; add --json for machine output):
@@ -54,7 +56,7 @@ Boards (talk to the server; add --json for machine output):
   blockies read   BOARD                  print the script and its errors
   blockies list                          list boards
   blockies rm     BOARD                  delete a board
-  blockies open   BOARD                  open the board in a browser
+  blockies open   BOARD                  open the board in a browser (talk to it there)
   blockies demo                          load the example boards
 
 Offline:
@@ -64,7 +66,9 @@ Offline:
   blockies examples [NAME]               list or print the examples
   blockies version
 
-Environment: BLOCKIES_SERVER (default http://127.0.0.1:4318), BLOCKIES_DIR (default ~/.blockies/boards).
+Environment: BLOCKIES_SERVER (default http://127.0.0.1:4318), BLOCKIES_DIR (default ~/.blockies/boards),
+BLOCKIES_MODEL and BLOCKIES_EFFORT for the agent you talk to. Talking needs Anthropic credentials on the
+server: ANTHROPIC_API_KEY, or a profile from ` + "`ant auth login`" + `.
 `
 
 func main() {
@@ -87,6 +91,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	public := fs.String("url", "", "public base URL for links (default http://ADDR)")
 	tick := fs.Int("tick", -1, "tick to render (default: the last)")
 	webDir := fs.String("web", os.Getenv("BLOCKIES_WEB"), "serve the viewer from this directory (for viewer development)")
+	model := fs.String("model", env("BLOCKIES_MODEL", agent.DefaultModel), "model for the agent you talk to")
+	effort := fs.String("effort", env("BLOCKIES_EFFORT", "low"), "agent effort: low, medium, high, xhigh or max")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -98,7 +104,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	switch cmd {
 	case "serve":
-		return serve(ctx, *addr, *dir, *memory, *public, *webDir, stderr)
+		return serve(ctx, *addr, *dir, *memory, *public, *webDir, agent.Config{Model: *model, Effort: *effort}, stderr)
 	case "mcp":
 		return serveMCP(ctx, api, *addr, *dir, *public, stdin, stdout, stderr)
 	case "write":
@@ -155,9 +161,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return fail(stderr, err)
 		}
 		return exitOK
-	case "open":
+	case "open", "studio": // studio: the old name of the same page
 		if len(pos) != 1 {
-			return bad(stderr, "open BOARD")
+			return bad(stderr, cmd+" BOARD")
 		}
 		u := strings.TrimRight(*serverURL, "/") + "/b/" + pos[0]
 		fmt.Fprintln(stdout, u)
@@ -230,14 +236,15 @@ func parse(fs *flag.FlagSet, args []string) ([]string, error) {
 	}
 }
 
-func serve(ctx context.Context, addr, dir string, memory bool, public, webDir string, stderr io.Writer) int {
+func serve(ctx context.Context, addr, dir string, memory bool, public, webDir string, ac agent.Config, stderr io.Writer) int {
 	log := slog.New(slog.NewTextHandler(stderr, nil))
 	svc, err := newService(addr, dir, memory, public)
 	if err != nil {
 		return fail(stderr, err)
 	}
 	ms := mcpserver.New(svc, version())
-	opts := server.Options{MCP: ms, Log: log}
+	ac.Log = log
+	opts := server.Options{MCP: ms, Agent: agent.New(svc, ac), Log: log, Hosts: hosts(addr, public)}
 	if webDir != "" {
 		opts.Web = os.DirFS(webDir)
 	}
@@ -251,6 +258,13 @@ func serve(ctx context.Context, addr, dir string, memory bool, public, webDir st
 		where = dir
 	}
 	log.Info("serving boards", "url", "http://"+ln.Addr().String(), "mcp", "http://"+ln.Addr().String()+"/mcp", "boards", where)
+	log.Info("agent", "model", opts.Agent.Model(), "ready", opts.Agent.Ready())
+	if !opts.Agent.Ready() {
+		log.Warn("no Anthropic credentials: boards work, but talking needs ANTHROPIC_API_KEY or `ant auth login`")
+	}
+	if h, _, _ := net.SplitHostPort(addr); h == "" || h == "0.0.0.0" || h == "::" {
+		log.Warn("listening on every network interface with no authentication: anyone who can reach this port can change boards and spend the agent's tokens; prefer 127.0.0.1, and pass --url with the address people use")
+	}
 	go func() {
 		<-ctx.Done()
 		shut, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -279,7 +293,7 @@ func serveMCP(ctx context.Context, remote *client.Client, addr, dir, public stri
 			fmt.Fprintf(stderr, "no board server at %s and cannot start one on %s: %v\n", remote.Base, addr, err)
 			return exitNoServer
 		}
-		srv := server.NewHTTPServer(addr, server.Handler(svc, server.Options{Log: log}))
+		srv := server.NewHTTPServer(addr, server.Handler(svc, server.Options{Log: log, Hosts: hosts(addr, public)}))
 		go func() { _ = srv.Serve(ln) }()
 		defer func() { _ = srv.Close() }()
 		log.Info("started a board server for this session", "url", "http://"+ln.Addr().String(), "boards", dir)
@@ -292,6 +306,20 @@ func serveMCP(ctx context.Context, remote *client.Client, addr, dir, public stri
 		return exitAPI
 	}
 	return exitOK
+}
+
+// hosts are the Host names the server answers to besides localhost: the host
+// of the public URL, and the address it listens on when that is an IP (an IP
+// cannot be rebound to another site).
+func hosts(addr, public string) []string {
+	var out []string
+	if u, err := url.Parse(public); err == nil && u.Hostname() != "" {
+		out = append(out, u.Hostname())
+	}
+	if h, _, err := net.SplitHostPort(addr); err == nil && net.ParseIP(h) != nil {
+		out = append(out, h)
+	}
+	return out
 }
 
 func newService(addr, dir string, memory bool, public string) (*boards.Service, error) {

@@ -88,7 +88,9 @@ func renderGrid(b *strings.Builder, tl *kernel.Timeline, letters []byte, tick in
 		case "state":
 			state[e.P] = e.State
 		case "note":
-			note[e.P] = e.Text
+			if e.Text != nil {
+				note[e.P] = *e.Text
+			}
 		case "body":
 			body[e.P] = e.Cells
 		}

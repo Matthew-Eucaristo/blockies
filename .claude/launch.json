@@ -4,19 +4,67 @@
     {
       "name": "server",
       "runtimeExecutable": "go",
-      "runtimeArgs": ["run", "./cmd/blockies", "serve", "--memory", "--web", "web"],
+      "runtimeArgs": [
+        "run",
+        "./cmd/blockies",
+        "serve",
+        "--memory",
+        "--web",
+        "web"
+      ],
+      "port": 4318
+    },
+    {
+      "name": "server-env",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "set -a && . ./.env && set +a && exec go run ./cmd/blockies serve --memory --addr 127.0.0.1:4330 --web web"
+      ],
+      "port": 4330
+    },
+    {
+      "name": "fakemodel",
+      "runtimeExecutable": "go",
+      "runtimeArgs": [
+        "run",
+        "./internal/fakemodel/serve"
+      ],
+      "port": 4399
+    },
+    {
+      "name": "server-fake",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ANTHROPIC_BASE_URL=http://127.0.0.1:4399",
+        "ANTHROPIC_API_KEY=fake",
+        "go",
+        "run",
+        "./cmd/blockies",
+        "serve",
+        "--memory",
+        "--web",
+        "web"
+      ],
       "port": 4318
     },
     {
       "name": "prototypes",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4317"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4317"
+      ],
       "port": 4317
     },
     {
       "name": "explorations",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["explorations/serve.py", "4319"],
+      "runtimeArgs": [
+        "explorations/serve.py",
+        "4319"
+      ],
       "port": 4319
     }
   ]

@@ -9,9 +9,12 @@ package script
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Op is the kind of a statement.
@@ -34,10 +37,24 @@ const (
 	Cap     Op = "cap"     // cap db 1
 	On      Op = "on"      // on db SELECT: db -> $from : rows
 	Every   Op = "every"   // every 3: client -> api : GET
+	Click   Op = "click"   // click vote/a: vote/a -> tally : A
+	Tap     Op = "tap"     // tap vote/a 12 vote/b 5  (people tapped; written by the server)
+	Add     Op = "add"     // add tally/a 1
+	Focus   Op = "focus"   // focus results  (every screen looks there)
+	Set     Op = "set"     // set total harga * jumlah
+	Calc    Op = "calc"    // calc total = harga * jumlah  (kept up to date)
+	Move    Op = "move"    // move api 4 6  (a person dragged it; written by the server)
 )
 
+// Skins say how a block looks and what people can do with it.
+var Skins = []string{"box", "number", "text", "button", "slider", "input", "toggle", "bar"}
+
+// Controls are skins people set by hand; their value is a starting value
+// (proc ... value V), so changing it replays the whole board.
+var Controls = []string{"slider", "input", "toggle"}
+
 // From is the only variable: inside an `on` rule it names the sender of the
-// message being handled.
+// message being handled, inside a `click` rule the process that was tapped.
 const From = "$from"
 
 // Limits that keep one board small enough to stream and render.
@@ -46,7 +63,14 @@ const (
 	MaxLabel = 80
 	MaxBody  = 64
 	MaxWait  = 500
+	MaxTaps  = 10_000 // most taps of one block in one tap line
 )
+
+// Tapped is one block in a tap line and how many people tapped it.
+type Tapped struct {
+	ID string `json:"id"`
+	N  int    `json:"n"`
+}
 
 // Colors is the fixed palette a kind or process may name. Renderers decide
 // the actual shades.
@@ -66,7 +90,14 @@ type Stmt struct {
 	State   string   `json:"state,omitempty"`   // new state
 	Text    string   `json:"text,omitempty"`    // note or comment
 	Dims    []int    `json:"dims,omitempty"`    // world sizes, or a proc's fixed position
-	N       int      `json:"n,omitempty"`       // body, wait, cap, every
+	N       int      `json:"n,omitempty"`       // body, wait, cap, every, add (may be negative)
+	Rel     bool     `json:"rel,omitempty"`     // body +N / -N: change the size instead of setting it
+	Taps    []Tapped `json:"taps,omitempty"`    // tap: blocks and counts, in order
+	Skin    string   `json:"skin,omitempty"`    // proc: how it looks (see Skins)
+	Min     *float64 `json:"min,omitempty"`     // proc: lowest value of a slider or bar
+	Max     *float64 `json:"max,omitempty"`     // proc: highest value of a slider or bar
+	Value   *Value   `json:"value,omitempty"`   // proc: starting value
+	X       *Expr    `json:"x,omitempty"`       // set, calc, add, and cap/body with a formula
 	Match   string   `json:"match,omitempty"`   // on: first word of the label, or "*"
 	Actions []Stmt   `json:"actions,omitempty"` // on, every
 }
@@ -132,9 +163,15 @@ func parseStmt(line string, top bool) (Stmt, *Error) {
 	// or a state change (it has an equals sign).
 	word, rest, _ := strings.Cut(line, " ")
 	rest = strings.TrimSpace(rest)
+	op := Op(word)
+	// A process may be named like a keyword (proc add, proc note): a line
+	// that continues with -> or = is then a message or a state change.
+	if strings.HasPrefix(rest, "->") || strings.HasPrefix(rest, "=") {
+		op = ""
+	}
 	var st Stmt
 	var err *Error
-	switch Op(word) {
+	switch op {
 	case World:
 		st, err = parseWorld(rest)
 	case Kind:
@@ -153,19 +190,31 @@ func parseStmt(line string, top bool) (Stmt, *Error) {
 		st, err = parseOn(rest)
 	case Every:
 		st, err = parseEvery(rest)
+	case Click:
+		st, err = parseClick(rest)
+	case Tap:
+		st, err = parseTap(rest)
+	case Focus:
+		st, err = parseRef(Op(word), rest)
+	case Add, Set:
+		st, err = parseIDExpr(op, rest)
+	case Calc:
+		st, err = parseCalc(rest)
+	case Move:
+		st, err = parseMove(rest)
 	default:
 		if strings.Contains(line, "->") {
 			st, err = parseSend(line)
 		} else if id, state, ok := strings.Cut(line, "="); ok {
 			st, err = parseState(strings.TrimSpace(id), strings.TrimSpace(state))
 		} else {
-			return Stmt{}, fail("syntax", "unknown statement %q (expected world, kind, proc, a -> b : label, a = state, note, body, wait, end, cap, on, every)", word)
+			return Stmt{}, fail("syntax", "unknown statement %q (expected world, kind, proc, a -> b : label, a = state, note, body, set, add, calc, wait, end, cap, on, every, click, tap, focus, move)", word)
 		}
 	}
 	if err != nil {
 		return Stmt{}, err
 	}
-	if !top && !timed(st.Op) {
+	if !top && (!timed(st.Op) || st.Op == Tap || st.Op == Move) {
 		return Stmt{}, fail("bad_action", "%s cannot be used inside a rule", st.Op)
 	}
 	if par {
@@ -180,7 +229,7 @@ func parseStmt(line string, top bool) (Stmt, *Error) {
 // timed reports whether a statement happens at a moment in time.
 func timed(op Op) bool {
 	switch op {
-	case Proc, Send, State, Note, Body, End:
+	case Proc, Send, State, Note, Body, End, Tap, Add, Focus, Set, Move:
 		return true
 	}
 	return false
@@ -270,6 +319,31 @@ func parseProc(rest string) (Stmt, *Error) {
 			if !slices.Contains(Colors, st.Color) {
 				return Stmt{}, fail("bad_color", "color must be one of %s", strings.Join(Colors, ", "))
 			}
+		case strings.HasPrefix(t.s, "skin="):
+			st.Skin = strings.TrimPrefix(t.s, "skin=")
+			if !slices.Contains(Skins, st.Skin) {
+				return Stmt{}, fail("bad_skin", "skin must be one of %s", strings.Join(Skins, ", "))
+			}
+		case strings.HasPrefix(t.s, "min=") || strings.HasPrefix(t.s, "max="):
+			f, err := strconv.ParseFloat(t.s[4:], 64)
+			if err != nil || math.IsInf(f, 0) || math.IsNaN(f) || math.Abs(f) > MaxNum {
+				return Stmt{}, fail("bad_number", "%q is not a number up to %g", t.s[4:], MaxNum)
+			}
+			if t.s[:3] == "min" {
+				st.Min = &f
+			} else {
+				st.Max = &f
+			}
+		case t.s == "value":
+			if i+1 >= len(toks) {
+				return Stmt{}, fail("syntax", "value takes a number or \"text\"")
+			}
+			i++
+			v, err := literal(toks[i])
+			if err != nil {
+				return Stmt{}, err
+			}
+			st.Value = &v
 		case t.s == "at":
 			var nums []string
 			for i+1 < len(toks) && !toks[i+1].quoted && isNumber(toks[i+1].s) {
@@ -281,7 +355,7 @@ func parseProc(rest string) (Stmt, *Error) {
 			}
 			st.Dims, _ = ints(nums)
 		default:
-			return Stmt{}, fail("syntax", "proc takes \"label\", kind=..., color=... and at x y, not %q", t.s)
+			return Stmt{}, fail("syntax", "proc takes \"label\", kind=..., color=..., skin=..., min=, max=, value V and at x y, not %q", t.s)
 		}
 	}
 	return st, nil
@@ -335,15 +409,28 @@ func parseNote(rest string) (Stmt, *Error) {
 
 func parseIDNumber(op Op, rest string) (Stmt, *Error) {
 	f := strings.Fields(rest)
-	if len(f) != 2 || !isRef(f[0]) {
-		return Stmt{}, fail("syntax", "%s takes an id and a number, for example: %s db 2", op, op)
+	if len(f) >= 2 && isRef(f[0]) && !isNumber(f[1]) && len(f) > 1 && !(op == Body && len(f) == 2 && (strings.HasPrefix(f[1], "+") || strings.HasPrefix(f[1], "-")) && isNumber(f[1][1:])) {
+		// A formula: cap db kapasitas, body tank level / 10.
+		_, src, _ := strings.Cut(rest, " ")
+		x, err := ParseExpr(src)
+		if err != nil {
+			return Stmt{}, err
+		}
+		return Stmt{Op: op, ID: f[0], X: x}, nil
 	}
+	if len(f) != 2 || !isRef(f[0]) {
+		return Stmt{}, fail("syntax", "%s takes an id and a number or formula, for example: %s db 2", op, op)
+	}
+	rel := op == Body && (strings.HasPrefix(f[1], "+") || strings.HasPrefix(f[1], "-"))
 	n, err := strconv.Atoi(f[1])
-	if err != nil || n < 0 {
+	if err != nil || n < 0 && !rel {
 		return Stmt{}, fail("bad_number", "%q is not a whole number", f[1])
 	}
-	if op == Body && n > MaxBody {
+	if op == Body && (n > MaxBody || n < -MaxBody) {
 		return Stmt{}, fail("bad_number", "a body holds at most %d cells", MaxBody)
+	}
+	if rel {
+		return Stmt{Op: op, ID: f[0], N: n, Rel: true}, nil
 	}
 	if op == Cap && n < 1 {
 		return Stmt{}, fail("bad_number", "cap must be at least 1")
@@ -365,6 +452,106 @@ func parseEnd(rest string) (Stmt, *Error) {
 		return Stmt{}, fail("bad_id", "end needs an id, for example: end api/cache")
 	}
 	return Stmt{Op: End, ID: id}, nil
+}
+
+// parseRef reads statements that take only an id: tap, focus.
+func parseRef(op Op, rest string) (Stmt, *Error) {
+	id := strings.TrimSpace(rest)
+	if !isRef(id) {
+		return Stmt{}, fail("bad_id", "%s needs an id, for example: %s vote/a", op, op)
+	}
+	return Stmt{Op: op, ID: id}, nil
+}
+
+// parseTap reads tap ID [N] [ID [N]]...: people tapping blocks at one tick.
+func parseTap(rest string) (Stmt, *Error) {
+	f := strings.Fields(rest)
+	if len(f) == 0 {
+		return Stmt{}, fail("bad_id", "tap needs an id, for example: tap vote/a or tap vote/a 3 vote/b 2")
+	}
+	st := Stmt{Op: Tap}
+	for i := 0; i < len(f); i++ {
+		id := f[i]
+		if !isID(id) {
+			return Stmt{}, fail("bad_id", "%q is not a valid id", id)
+		}
+		n := 1
+		if i+1 < len(f) && isNumber(f[i+1]) {
+			n, _ = strconv.Atoi(f[i+1])
+			if n < 1 || n > MaxTaps {
+				return Stmt{}, fail("bad_number", "a tap count is 1 to %d", MaxTaps)
+			}
+			i++
+		}
+		st.Taps = append(st.Taps, Tapped{ID: id, N: n})
+	}
+	return st, nil
+}
+
+// parseIDExpr reads add ID formula and set ID formula.
+func parseIDExpr(op Op, rest string) (Stmt, *Error) {
+	id, src, _ := strings.Cut(strings.TrimSpace(rest), " ")
+	if !isRef(id) || strings.TrimSpace(src) == "" {
+		return Stmt{}, fail("syntax", "%s takes an id and a number or formula, for example: %s total harga * jumlah", op, op)
+	}
+	x, err := ParseExpr(src)
+	if err != nil {
+		return Stmt{}, err
+	}
+	return Stmt{Op: op, ID: id, X: x}, nil
+}
+
+func parseCalc(rest string) (Stmt, *Error) {
+	id, src, ok := strings.Cut(rest, "=")
+	id = strings.TrimSpace(id)
+	if !ok || !isID(id) {
+		return Stmt{}, fail("syntax", "a formula is: calc total = harga * jumlah")
+	}
+	x, err := ParseExpr(src)
+	if err != nil {
+		return Stmt{}, err
+	}
+	return Stmt{Op: Calc, ID: id, X: x}, nil
+}
+
+func parseMove(rest string) (Stmt, *Error) {
+	f := strings.Fields(rest)
+	if len(f) < 2 || len(f) > 5 || !isID(f[0]) {
+		return Stmt{}, fail("syntax", "move takes an id and 1 to 4 numbers, for example: move api 4 6")
+	}
+	dims, err := ints(f[1:])
+	if err != nil {
+		return Stmt{}, err
+	}
+	return Stmt{Op: Move, ID: f[0], Dims: dims}, nil
+}
+
+// literal reads a number or a quoted text.
+func literal(t token) (Value, *Error) {
+	if t.quoted {
+		if utf8.RuneCountInString(t.s) > MaxLabel {
+			return Value{}, fail("too_long", "a text value holds at most %d characters", MaxLabel)
+		}
+		return Txt(t.s), nil
+	}
+	f, err := strconv.ParseFloat(strings.ReplaceAll(t.s, "_", ""), 64)
+	if err != nil || math.IsInf(f, 0) || math.IsNaN(f) || math.Abs(f) > MaxNum {
+		return Value{}, fail("bad_number", "%q is not a number", t.s)
+	}
+	return Num(f), nil
+}
+
+func parseClick(rest string) (Stmt, *Error) {
+	head, body, ok := strings.Cut(rest, ":")
+	id := strings.TrimSpace(head)
+	if !ok || !isID(id) {
+		return Stmt{}, fail("syntax", "a click rule is: click vote/a: vote/a -> tally : A")
+	}
+	acts, err := parseActions(body)
+	if err != nil {
+		return Stmt{}, err
+	}
+	return Stmt{Op: Click, ID: id, Actions: acts}, nil
 }
 
 func parseOn(rest string) (Stmt, *Error) {
@@ -454,6 +641,18 @@ func FormatStmt(st Stmt) string {
 		if st.Color != "" {
 			out += " color=" + st.Color
 		}
+		if st.Skin != "" {
+			out += " skin=" + st.Skin
+		}
+		if st.Min != nil {
+			out += " min=" + FormatNum(*st.Min)
+		}
+		if st.Max != nil {
+			out += " max=" + FormatNum(*st.Max)
+		}
+		if st.Value != nil {
+			out += " value " + st.Value.String()
+		}
 		if len(st.Dims) > 0 {
 			out += " at " + joinInts(st.Dims)
 		}
@@ -467,7 +666,32 @@ func FormatStmt(st Stmt) string {
 	case Note:
 		out = "note " + st.ID + " " + quote(st.Text)
 	case Body, Cap:
-		out = fmt.Sprintf("%s %s %d", st.Op, st.ID, st.N)
+		if st.X != nil {
+			out = fmt.Sprintf("%s %s %s", st.Op, st.ID, st.X)
+		} else if st.Rel {
+			out = fmt.Sprintf("%s %s %+d", st.Op, st.ID, st.N)
+		} else {
+			out = fmt.Sprintf("%s %s %d", st.Op, st.ID, st.N)
+		}
+	case Add, Set:
+		out = fmt.Sprintf("%s %s %s", st.Op, st.ID, st.X)
+	case Calc:
+		out = fmt.Sprintf("calc %s = %s", st.ID, st.X)
+	case Move:
+		out = "move " + st.ID + " " + joinInts(st.Dims)
+	case Focus:
+		out = "focus " + st.ID
+	case Tap:
+		parts := []string{"tap"}
+		for _, t := range st.Taps {
+			parts = append(parts, t.ID)
+			if t.N != 1 {
+				parts = append(parts, strconv.Itoa(t.N))
+			}
+		}
+		out = strings.Join(parts, " ")
+	case Click:
+		out = fmt.Sprintf("click %s: %s", st.ID, formatActions(st.Actions))
 	case Wait:
 		out = fmt.Sprintf("wait %d", st.N)
 	case End:
@@ -490,6 +714,10 @@ func formatActions(acts []Stmt) string {
 	}
 	return strings.Join(parts, "; ")
 }
+
+// IsID reports whether s is a valid process id: names joined by /, for
+// example api or eng/api/login.
+func IsID(s string) bool { return isID(s) }
 
 // Valid ids are paths of names: api, api/cache, eng/api/login.
 func isID(s string) bool {
@@ -553,7 +781,13 @@ type token struct {
 }
 
 // tokens splits on spaces, keeping "double quoted" text (with \" and \\) whole.
+// Control characters other than tab are refused, so a line stays one line.
 func tokens(s string) ([]token, *Error) {
+	for _, r := range s {
+		if r != '\t' && unicode.IsControl(r) {
+			return nil, fail("syntax", "a line cannot hold control characters")
+		}
+	}
 	var out []token
 	for i := 0; i < len(s); {
 		switch s[i] {

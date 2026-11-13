@@ -34,6 +34,34 @@ blockies demo
 blockies open checkout
 ```
 
+## Talk to it
+
+Every board is something you can talk to. Hold Space (or the microphone), say what you want to see, and an agent draws it while it answers aloud, in English or Indonesian. Say "what if the database only handles one query a second?" and watch the queue grow. Press `?` for every shortcut; Share copies a watch-only link.
+
+It needs Anthropic credentials on the server:
+
+```bash
+ANTHROPIC_API_KEY=... blockies serve
+```
+
+Or keep the key in a `.env` file in the repo (git ignores it) and load it into the shell first; the binary itself does not read `.env`:
+
+```bash
+set -a; . ./.env; set +a; blockies serve
+```
+
+```bash
+blockies open ideas
+```
+
+Speech recognition runs in the browser (Chrome and Safari; Firefox and Edge are not reliable yet). Elsewhere, type, or use dictation (on a Mac, press fn twice) in the text box. `--model` and `--effort` pick the model (default `claude-opus-5-5`, low effort for quick replies).
+
+The server listens on 127.0.0.1 and only answers to its own host names, so other web pages cannot write to your boards. A watch link is not a password: anyone who can reach the server can open any board. To use it from a phone on your network, start it with `--addr 0.0.0.0:4318 --url http://YOUR-IP:4318`; the microphone needs HTTPS there (browsers only allow it on localhost or HTTPS), so type or use the phone's dictation.
+
+## Let people take part
+
+Blocks can be buttons. Ask the agent for "a vote between coffee and tea for my talk" (or load `blockies demo` and open the `vote` board): the big screen shows the result, and people open the voting part on their phones (select it, then Menu → Copy a phone link; the link ends in `?view=vote`) and tap. Every tap is a line on the board, so every screen shows the same run. Phones on your network need the server started with `--addr 0.0.0.0:4318 --url http://YOUR-IP:4318`.
+
 ## Connect an agent
 
 Claude Code (or any MCP client):
@@ -77,7 +105,8 @@ Messages take one tick. `&` runs a line at the same time as the one above. Rules
 | `kernel/` | Runs a script into a timeline: placement, messages, rules, bodies. Pure and deterministic |
 | `boards/` | The one place boards change: store, compile, fan out to viewers |
 | `server/`, `mcpserver/`, `client/` | HTTP and event stream, MCP tools, HTTP client |
-| `web/` | The viewer: plain ES modules, embedded in the binary |
+| `agent/` | The studio's harness: Claude draws on a board while it answers |
+| `web/` | The board page: plain ES modules with registries for views, actions and panels, embedded in the binary |
 | `cmd/blockies/` | The binary |
 | `examples/` | Example boards |
 | `explorations/` | The eight concept sketches this design came from |

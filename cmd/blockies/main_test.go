@@ -25,7 +25,7 @@ func TestOfflineCommands(t *testing.T) {
 	}{
 		{[]string{"check", good}, exitOK, "2 processes, 1 messages"},
 		{[]string{"check", bad}, exitBoardErrors, "bad.blk:2: syntax"},
-		{[]string{"check", "--json", good}, exitOK, `"version": 1`},
+		{[]string{"check", "--json", good}, exitOK, `"version": 2`},
 		{[]string{"render", good}, exitOK, "A-->B"},
 		{[]string{"guide"}, exitOK, "# Board scripts"},
 		{[]string{"examples"}, exitOK, "checkout"},

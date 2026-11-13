@@ -4,7 +4,7 @@
 // at once. Nobody draws it: it is the history of the world.
 
 import { alpha, cssVar, hatch, pill, toneColor } from './draw.js';
-import { tone } from './model.js';
+import { formatNum, tone } from './model.js';
 
 /** @typedef {import('./model.js').Model} Model */
 
@@ -13,6 +13,7 @@ export class SequenceView {
     /** @type {{i: number, x0: number, x1: number}[]} */
     this.cols = [];
     this.scroll = 0;
+    this.want = 0;
   }
 
   step() {}
@@ -20,7 +21,7 @@ export class SequenceView {
   /**
    * @param {CanvasRenderingContext2D} g @param {number} W @param {number} H
    * @param {Model} m @param {number} t
-   * @param {{hover: number, selected: number}} o
+   * @param {{hover: number, selected: number, motion: boolean}} o
    */
   draw(g, W, H, m, t, o) {
     const n = m.order.length;
@@ -34,7 +35,8 @@ export class SequenceView {
     const total = ticks * rowH;
     // Keep the playhead in view on long runs.
     const want = Math.max(0, Math.min(total - avail, t * rowH - avail * 0.6));
-    this.scroll += (want - this.scroll) * 0.2;
+    this.want = want;
+    this.scroll += (want - this.scroll) * (o.motion ? 0.2 : 1);
     if (Math.abs(want - this.scroll) < 0.5) this.scroll = want;
     /** @param {number} tick */
     const Y = (tick) => head + 8 + tick * rowH - this.scroll;
@@ -193,6 +195,32 @@ export class SequenceView {
       }
     }
 
+    // Values left of the lifeline; taps as dots.
+    for (const i of m.order) {
+      const x = /** @type {number} */ (X.get(i));
+      const vs = m.values[i];
+      for (let j = 0; j < vs.length; j++) {
+        const e = vs[j];
+        if (vs[j + 1]?.t === e.t) continue; // several in one tick: show where it ended
+        g.globalAlpha = t >= e.t ? 1 : 0.3;
+        pill(g, `= ${e.text ?? formatNum(e.value ?? 0)}`, x - 22, Y(e.t) + rowH * 0.5, { size: 11, max: 90 });
+        g.globalAlpha = 1;
+      }
+    }
+    for (const e of m.taps) {
+      const x = X.get(e.p);
+      if (x === undefined) continue;
+      g.globalAlpha = t >= e.t ? 1 : 0.3;
+      g.fillStyle = m.colors[e.p];
+      g.beginPath();
+      g.arc(x, Y(e.t) + 2, 5, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = paper;
+      g.lineWidth = 1.5;
+      g.stroke();
+      g.globalAlpha = 1;
+    }
+
     // Playhead.
     const yp = Y(t);
     g.strokeStyle = cssVar('--accent');
@@ -231,6 +259,14 @@ export class SequenceView {
     g.font = '10px ui-sans-serif, system-ui, sans-serif';
     g.textAlign = 'right';
     g.fillText('tick', gutter - 10, head / 2);
+  }
+
+  settle() {
+    this.scroll = this.want;
+  }
+
+  animating() {
+    return this.scroll !== this.want;
   }
 
   /** @param {number} x @param {number} _y */

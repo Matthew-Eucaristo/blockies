@@ -7,3 +7,6 @@ dist/
 *.db-shm
 /explorations/compiled.js
 /blockies
+
+# Local secrets (ANTHROPIC_API_KEY for talking)
+.env

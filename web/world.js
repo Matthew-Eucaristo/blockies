@@ -2,10 +2,13 @@
 // voxels (axis 2 is height). Cores, bodies and messages in flight.
 
 import { Springs, alpha, cssVar, hatch, mix, pill, shade, toneColor } from './draw.js';
-import { tone } from './model.js';
+import { formatNum, tone } from './model.js';
 
 /** @typedef {import('./model.js').Model} Model */
-/** @typedef {{mode: 'flat' | 'voxel', hover: number, selected: number, clock: number}} Opts */
+/**
+ * @typedef {{lo: number[], hi: number[]}} Box
+ * @typedef {{mode: 'flat' | 'voxel', hover: number, selected: number, clock: number, motion: boolean, playing?: boolean, frame?: Box | null}} Opts
+ */
 
 export class WorldView {
   constructor() {
@@ -13,8 +16,114 @@ export class WorldView {
     this.slice = 0;
     /** @type {{i: number, x: number, y: number, r: number}[]} */
     this.hits = [];
-    /** @type {Map<string, {at: number[], color: string, core: boolean}>} */
+    /** @type {Map<string, {at: number[], color: string, core: boolean, pid: string}>} */
     this.seen = new Map();
+    this.pulsing = false; // a busy process is drawn with a pulse
+    /** @type {Box | null} */
+    this.cam = null; // the part of the world in view; glides to its target
+    this.camMoving = false;
+    this.rippling = false; // a tap ring is still spreading
+    /** @type {{ox: number, oy: number, cs: number, w: number, h: number} | null} */
+    this.grid = null; // the flat view's grid in the last frame
+  }
+
+  /**
+   * Draw what a block's skin shows inside it: its number, a slider or bar
+   * track, a toggle's state, a mark on things people can change.
+   * @param {CanvasRenderingContext2D} g @param {Model} m @param {number} i @param {number} k
+   * @param {number} x @param {number} y @param {number} sz @param {string} color
+   */
+  skin(g, m, i, k, x, y, sz, color) {
+    if (sz < 14) return;
+    const p = m.procs[i];
+    const value = m.valueAt(i, k);
+    const cx = x + sz / 2;
+    const cy = y + sz / 2;
+    const ink = cssVar('--ink');
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    if (p.skin === 'toggle') {
+      const on = !!value && value !== '0';
+      if (on) {
+        g.fillStyle = alpha(color, 0.55);
+        g.beginPath();
+        g.roundRect(x, y, sz, sz, Math.min(7, sz * 0.16));
+        g.fill();
+      }
+      g.fillStyle = ink;
+      g.font = `700 ${Math.round(Math.min(sz * 0.26, 20))}px ui-sans-serif, system-ui, sans-serif`;
+      g.fillText(on ? 'ON' : 'OFF', cx, cy + 1);
+    } else if (typeof value === 'number') {
+      g.fillStyle = ink;
+      const text = formatNum(value);
+      g.font = `700 ${Math.round(Math.min(sz * (text.length > 5 ? 0.26 : 0.42), 34))}px ui-sans-serif, system-ui, sans-serif`;
+      g.fillText(text, cx, cy + (p.skin === 'slider' || p.skin === 'bar' ? -sz * 0.06 : 1));
+    }
+    if ((p.skin === 'slider' || p.skin === 'bar') && typeof value === 'number') {
+      const lo = p.min ?? 0;
+      const hi = p.max ?? 100;
+      const f = hi > lo ? Math.max(0, Math.min(1, (value - lo) / (hi - lo))) : 0;
+      const tx = x + sz * 0.14;
+      const tw = sz * 0.72;
+      const ty = y + sz * 0.78;
+      g.fillStyle = alpha(ink, 0.15);
+      g.beginPath();
+      g.roundRect(tx, ty - 2, tw, 4, 2);
+      g.fill();
+      g.fillStyle = color;
+      g.beginPath();
+      g.roundRect(tx, ty - 2, Math.max(4, tw * f), 4, 2);
+      g.fill();
+      if (p.skin === 'slider') {
+        g.beginPath();
+        g.arc(tx + tw * f, ty, Math.max(4, sz * 0.08), 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = cssVar('--paper');
+        g.lineWidth = 1.5;
+        g.stroke();
+      }
+    }
+    if (p.skin === 'input') {
+      // A small pencil corner: this one can be written in.
+      g.fillStyle = alpha(color, 0.9);
+      g.beginPath();
+      g.moveTo(x + sz, y + sz - sz * 0.28);
+      g.lineTo(x + sz, y + sz);
+      g.lineTo(x + sz - sz * 0.28, y + sz);
+      g.closePath();
+      g.fill();
+    }
+  }
+
+  /** Move the camera toward a target box. @param {Box} target @param {boolean} motion @returns {Box} */
+  camera(target, motion) {
+    if (!this.cam || !motion) {
+      this.cam = { lo: [...target.lo], hi: [...target.hi] };
+      this.camMoving = false;
+      return this.cam;
+    }
+    let moving = false;
+    for (const key of /** @type {const} */ (['lo', 'hi'])) {
+      for (let a = 0; a < 3; a++) {
+        const d = target[key][a] - this.cam[key][a];
+        if (Math.abs(d) > 0.01) {
+          this.cam[key][a] += d * 0.14;
+          moving = true;
+        } else this.cam[key][a] = target[key][a];
+      }
+    }
+    this.camMoving = moving;
+    return this.cam;
+  }
+
+  /** Jump appearing and leaving things to their end state. */
+  settle() {
+    this.springs.settle();
+  }
+
+  /** Whether the next frame would look different without new input. */
+  animating() {
+    return !this.springs.settled() || this.pulsing || this.camMoving || this.rippling;
   }
 
   /** @param {number} dt */
@@ -42,23 +151,33 @@ export class WorldView {
       m.bodyAt(i, k).forEach((c, j) => {
         const id = `b${i}.${j}`;
         things.push({ id, i, at: c, color, core: false, s: sp.set(id) });
-        this.seen.set(id, { at: c, color, core: false });
+        this.seen.set(id, { at: c, color, core: false, pid: p.id });
       });
       const id = `p${i}`;
-      things.push({ id, i, at: p.at, color, core: true, s: sp.set(id) });
-      this.seen.set(id, { at: p.at, color, core: true });
+      things.push({ id, i, at: m.atAt(i, k), color, core: true, s: sp.set(id) });
+      this.seen.set(id, { at: m.atAt(i, k), color, core: true, pid: p.id });
     }
     for (const id of sp.leaving()) {
       const s = this.seen.get(id);
-      if (s) things.push({ id, i: Number(id.slice(1).split('.')[0]), at: s.at, color: s.color, core: s.core, s: sp.get(id) });
+      const i = Number(id.slice(1).split('.')[0]);
+      // After the board is replaced, an old index may name another process
+      // or none: such things just vanish instead of animating out.
+      if (s && m.procs[i]?.id === s.pid) things.push({ id, i, at: s.at, color: s.color, core: s.core, s: sp.get(id) });
     }
     this.hits = [];
+    this.pulsing = false;
+    this.rippling = false;
+    /** @type {Box | null} */
+    this.focusBox = o.frame ?? null;
     if (o.mode === 'voxel') this.voxel(g, W, H, m, t, k, things, o);
     else this.flat(g, W, H, m, t, k, things, o);
   }
 
   /** @param {number[]} at */
   ghost(at) {
+    const f = this.focusBox;
+    // Faded: another layer of a 3D world, or outside the part in focus.
+    if (f && (at[0] < f.lo[0] || at[0] > f.hi[0] || (at[1] ?? 0) < f.lo[1] || (at[1] ?? 0) > f.hi[1])) return true;
     return (at[2] ?? 0) !== this.slice;
   }
 
@@ -72,7 +191,7 @@ export class WorldView {
     const [w, h] = [m.world[0], m.world[1] ?? 1];
     // Frame the part of the world the run uses (plus a cell of room), not
     // the whole world: agents rarely size worlds tightly.
-    const { lo, hi } = m.bounds;
+    const { lo, hi } = this.camera(o.frame ?? m.bounds, o.motion);
     const fx0 = Math.max(0, lo[0] - 1);
     const fx1 = Math.min(w, hi[0] + 2);
     const fy0 = Math.max(0, lo[1] - 1);
@@ -81,6 +200,7 @@ export class WorldView {
     const cs = Math.max(3, Math.floor(Math.min((W - 2 * margin) / (fx1 - fx0), (H - 2 * margin) / (fy1 - fy0), 84)));
     const ox = Math.floor(W / 2 - cs * (fx0 + fx1) / 2);
     const oy = Math.floor(H / 2 - cs * (fy0 + fy1) / 2);
+    this.grid = { ox, oy, cs, w, h };
     /** @param {number[]} at */
     const center = (at) => [ox + (at[0] + 0.5) * cs, oy + ((at[1] ?? 0) + 0.5) * cs];
     const paper = cssVar('--paper');
@@ -114,7 +234,7 @@ export class WorldView {
       if (!th.core) continue;
       const parent = m.parentOf(th.i);
       if (parent < 0 || !m.alive(parent, k)) continue;
-      const [x1, y1] = center(m.procs[parent].at);
+      const [x1, y1] = center(m.atAt(parent, k));
       const [x2, y2] = center(th.at);
       g.globalAlpha = th.s;
       g.beginPath();
@@ -148,8 +268,17 @@ export class WorldView {
       const x = cx - sz / 2;
       const y = cy - sz / 2;
       g.globalAlpha = this.ghost(th.at) ? 0.18 : 1;
+      const tappable = m.procs[th.i].tap && m.alive(th.i, k);
+      if (tappable) {
+        // A button: a darker edge underneath.
+        g.fillStyle = mix(th.color, '#000000', 0.25);
+        g.beginPath();
+        g.roundRect(x, y + Math.max(3, cs * 0.07), sz, sz, Math.min(7, cs * 0.16));
+        g.fill();
+      }
       if (tn === 'busy') {
-        const pulse = 0.25 + 0.2 * Math.sin(o.clock * 6);
+        this.pulsing ||= o.motion;
+        const pulse = o.motion ? 0.25 + 0.2 * Math.sin(o.clock * 6) : 0.35;
         g.fillStyle = alpha(toneColor('busy'), pulse);
         g.beginPath();
         g.roundRect(x - 4, y - 4, sz + 8, sz + 8, 8);
@@ -174,6 +303,7 @@ export class WorldView {
         g.roundRect(x - 4, y - 4, sz + 8, sz + 8, 9);
         g.stroke();
       }
+      this.skin(g, m, th.i, k, x, y, sz, th.color);
       if (state && cs >= 12) {
         g.fillStyle = toneColor(tn);
         g.beginPath();
@@ -184,7 +314,19 @@ export class WorldView {
         g.stroke();
       }
       g.globalAlpha = 1;
-      this.hits.push({ i: th.i, x: cx, y: cy, r: cs / 2 });
+      if (!this.ghost(th.at)) this.hits.push({ i: th.i, x: cx, y: cy, r: cs / 2 });
+    }
+
+    // Taps: a ring spreads from the block that was tapped.
+    for (const tap of m.tapsAt(t)) {
+      if (!o.motion || !o.playing) break; // a paused board does not keep drawing
+      const [cx, cy] = center(m.atAt(tap.p, k));
+      this.rippling = true;
+      g.strokeStyle = alpha(m.colors[tap.p], 0.7 * (1 - tap.k));
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(cx, cy, cs * (0.5 + tap.k * 0.9), 0, Math.PI * 2);
+      g.stroke();
     }
 
     // Labels under cores, notes above them; messages draw on top.
@@ -194,14 +336,16 @@ export class WorldView {
       const p = m.procs[th.i];
       const state = m.stateAt(th.i, k);
       const label = state ? `${p.label} · ${state}` : p.label;
-      pill(g, label, cx, cy + cs * 0.45 + 11, { size: 12, max: Math.max(90, cs * 3) });
-      const note = m.noteAt(th.i, k);
-      if (note) pill(g, note, cx, cy - cs * 0.45 - 12, { size: 11, color: cssVar('--muted'), max: 200 });
+      // Two cells at most, so labels never overlap.
+      pill(g, label, cx, cy + cs * 0.45 + 11, { size: 12, max: Math.max(64, cs * 1.9) });
+      const value = m.valueAt(th.i, k);
+      const note = typeof value === 'string' && value ? value : m.noteAt(th.i, k);
+      if (note) pill(g, note, cx, cy - cs * 0.45 - 12, { size: typeof value === 'string' ? 13 : 11, color: typeof value === 'string' ? cssVar('--ink') : cssVar('--muted'), max: 260 });
       // Messages in flight.
     const fly = m.flying(t);
     for (const { m: msg, k: p } of fly) {
-      const a = center(m.procs[msg.from].at);
-      const b = center(m.procs[msg.to].at);
+      const a = center(m.atAt(msg.from, k));
+      const b = center(m.atAt(msg.to, k));
       const e = ease(p);
       const x = a[0] + (b[0] - a[0]) * e;
       const y = a[1] + (b[1] - a[1]) * e;
@@ -236,7 +380,7 @@ export class WorldView {
   voxel(g, W, H, m, t, k, things, o) {
     const [w, h] = [m.world[0], m.world[1] ?? 1];
     const LAYER = 1.6;
-    const { lo, hi } = m.bounds;
+    const { lo, hi } = this.camera(o.frame ?? m.bounds, o.motion);
     const fx0 = Math.max(0, lo[0] - 1);
     const fx1 = Math.min(w, hi[0] + 2);
     const fy0 = Math.max(0, lo[1] - 1);
@@ -247,7 +391,7 @@ export class WorldView {
     const th = Math.max(3, Math.min((W - 80) / spanX, (H - 80) / spanY, 40));
     const tw = th * 2;
     const tz = th * 1.1;
-    // Center the framed region: its floor diamond plus the height above it.
+    // Center the framed region (floor and height).
     const cx = ((fx0 + fx1) / 2 - (fy0 + fy1) / 2) * (tw / 2);
     const cy = ((fx0 + fx1) / 2 + (fy0 + fy1) / 2) * (th / 2);
     const ox = W / 2 - cx;
@@ -328,14 +472,16 @@ export class WorldView {
       const p = m.procs[q.i];
       const [sx, sy] = P(q.at[0] + 0.5, (q.at[1] ?? 0) + 0.5, q.z + 1.3);
       const state = m.stateAt(q.i, k);
-      pill(g, state ? `${p.label} · ${state}` : p.label, sx, sy - 12, { size: 12, max: 160 });
+      const value = m.valueAt(q.i, k);
+      const label = [p.label, value !== undefined ? String(value) : '', state].filter(Boolean).join(' · ');
+      pill(g, label, sx, sy - 12, { size: 12, max: 160 });
       const note = m.noteAt(q.i, k);
       if (note) pill(g, note, sx, sy - 31, { size: 11, color: cssVar('--muted'), max: 200 });
       // Messages arc over the world.
     const fly = m.flying(t);
     for (const { m: msg, k: p } of fly) {
-      const a = m.procs[msg.from].at;
-      const b = m.procs[msg.to].at;
+      const a = m.atAt(msg.from, k);
+      const b = m.atAt(msg.to, k);
       const e = ease(p);
       const x = a[0] + (b[0] - a[0]) * e + 0.5;
       const y = (a[1] ?? 0) + ((b[1] ?? 0) - (a[1] ?? 0)) * e + 0.5;
@@ -361,6 +507,21 @@ export class WorldView {
   }
 
   /** @param {number} x @param {number} y */
+  /** The screen point of process i's block in the last frame, or null. @param {number} i */
+  where(i) {
+    return this.hits.find((h) => h.i === i) ?? null;
+  }
+
+  /** The world cell under a screen point (flat view only), or null. @param {number} x @param {number} y */
+  cellAt(x, y) {
+    const gr = this.grid;
+    if (!gr) return null;
+    const cx = Math.floor((x - gr.ox) / gr.cs);
+    const cy = Math.floor((y - gr.oy) / gr.cs);
+    return cx >= 0 && cy >= 0 && cx < gr.w && cy < gr.h ? [cx, cy] : null;
+  }
+
+  /** The process drawn at a point, or -1. @param {number} x @param {number} y */
   pick(x, y) {
     let best = -1;
     let bd = Infinity;

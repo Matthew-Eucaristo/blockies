@@ -1,0 +1,10 @@
+# A small tool made of blocks: change the inputs and every formula follows.
+# Inputs are starting values, so a change replays the whole board.
+proc harga "Harga satuan" skin=input value 12000 color=blue
+proc jumlah "Jumlah" skin=slider min=1 max=50 value 3 color=blue
+proc diskon "Diskon %" skin=slider min=0 max=50 value 10 color=amber
+proc member "Member" skin=toggle color=purple
+proc total "Total" skin=number color=green
+proc pesan "Catatan" skin=text color=gray
+calc total = round(harga * jumlah * (100 - diskon - if(member, 5, 0)) / 100)
+calc pesan = if(total > 300000, "Gratis ongkir", "Ongkir dihitung saat bayar")

@@ -2,62 +2,93 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
 <title>Board · Blockies</title>
 <link rel="stylesheet" href="/web/style.css">
+<script>{ let t = 'light'; try { t = localStorage.getItem('blockies.theme') || t; } catch {} document.documentElement.dataset.theme = t === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : t; }</script>
 </head>
-<body class="board">
-<header class="bar">
-  <a class="home" href="/">Blockies</a>
-  <h1 id="name">board</h1>
-  <span id="live" class="live off" title="Live connection">connecting</span>
-  <span id="summary" class="muted"></span>
+<body class="app">
+<canvas id="view" aria-label="The board. Use the side panel (D) for a text version."></canvas>
+
+<div id="welcome" class="welcome" hidden><div id="welcomeBody" class="welcome-body"></div></div>
+
+<header id="top-left" class="island top-left">
+  <a class="home" href="/" title="All boards" aria-label="All boards">
+    <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect x="2" y="2" width="7" height="7" rx="2" fill="currentColor"/><rect x="11" y="2" width="7" height="7" rx="2" fill="currentColor" opacity=".55"/><rect x="2" y="11" width="7" height="7" rx="2" fill="currentColor" opacity=".55"/><rect x="11" y="11" width="7" height="7" rx="2" fill="currentColor" opacity=".3"/></svg>
+  </a>
+  <h1 id="name" class="name">board</h1>
+  <span id="live" class="conn connecting" title="Connecting…" role="img" aria-label="Connection"></span>
+  <button id="menuBtn" class="icon" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="menu" title="Menu">
+    <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </button>
 </header>
-<nav class="tools" aria-label="Playback">
-  <div class="seg" role="group" aria-label="View">
-    <button data-view="world" title="The world, flat (1)">World</button>
-    <button data-view="voxel" title="The world as voxels (2)">Voxel</button>
-    <button data-view="sequence" title="Time as an axis: sequence diagram and timeline (3)">Sequence</button>
+<div id="menu" class="island menu" role="menu" aria-label="Menu" hidden></div>
+
+<nav id="views" class="island views seg" aria-label="View"></nav>
+
+<div id="top-right" class="island top-right">
+  <button id="shareBtn" type="button" title="Copy a watch-only link">Share</button>
+  <button id="drawerBtn" class="icon" type="button" aria-expanded="false" aria-controls="drawer" title="Side panel (D)">
+    <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12.5 4v12" stroke="currentColor" stroke-width="1.6"/></svg>
+  </button>
+</div>
+
+<aside id="drawer" class="island drawer" aria-label="Side panel" hidden>
+  <div id="tabs" class="tabs" role="tablist" aria-label="Side panel"></div>
+  <div id="panelBody" class="panel-body"></div>
+  <p id="summary" class="summary"></p>
+</aside>
+
+<div id="bottom" class="bottom">
+  <div id="caption" class="caption" hidden></div>
+  <div class="island playback" role="group" aria-label="Playback">
+    <button id="back" class="icon" type="button" title="Previous tick (←)" aria-label="Previous tick">⏮</button>
+    <button id="play" class="icon" type="button" title="Play or pause (P)" aria-label="Play">▶</button>
+    <button id="fwd" class="icon" type="button" title="Next tick (→)" aria-label="Next tick">⏭</button>
+    <input id="scrub" type="range" min="0" max="1" step="0.01" value="0" aria-label="Time">
+    <span id="tick" class="tick" aria-live="off">0 / 0</span>
+    <select id="speed" aria-label="Speed" title="Speed">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+    </select>
+    <label class="check" title="Play new lines as they arrive (F)"><input id="follow" type="checkbox" checked> Follow</label>
+    <label id="sliceBox" class="check" hidden>Layer <input id="slice" type="range" min="0" max="0" value="0"></label>
   </div>
-  <div class="transport">
-    <button id="back" title="Previous tick (←)" aria-label="Previous tick">⏮</button>
-    <button id="play" title="Play or pause (space)" aria-label="Play">▶</button>
-    <button id="fwd" title="Next tick (→)" aria-label="Next tick">⏭</button>
+  <p id="connNote" class="conn-note" role="status" hidden></p>
+  <div id="dock" class="island dock" hidden>
+    <button id="mic" class="mic" type="button" aria-pressed="false" title="Hold to talk (or hold Space). A short press keeps listening until you press again." aria-label="Talk">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V20H8.5a1 1 0 1 0 0 2h7a1 1 0 1 0 0-2H13v-2.59a6 6 0 0 0 5-5.91Z"/></svg>
+    </button>
+    <form id="ask" class="ask">
+      <input id="say" type="text" autocomplete="off" enterkeyhint="send" placeholder="Hold Space to talk, or type here" aria-label="Say something to the agent">
+      <button id="send" class="icon" type="submit" title="Send (Enter)" aria-label="Send">
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M3 10h12M11 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </form>
+    <button id="undo" class="icon" type="button" title="Undo the last change (U)" aria-label="Undo">
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M7 5 3 9l4 4M3.5 9H12a5 5 0 0 1 0 10h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button id="voice" class="icon" type="button" aria-pressed="true" aria-label="Read replies aloud" title="Replies are read aloud">
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M3 8v4h3l4 3.5v-11L6 8H3Z" fill="currentColor"/><path class="waves" d="M13 7.5a3.5 3.5 0 0 1 0 5M15 5.5a6.5 6.5 0 0 1 0 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
   </div>
-  <input id="scrub" type="range" min="0" max="1" step="0.01" value="0" aria-label="Time">
-  <span id="tick" class="tick">0 / 0</span>
-  <select id="speed" aria-label="Speed" title="Speed">
-    <option value="0.5">0.5×</option>
-    <option value="1" selected>1×</option>
-    <option value="2">2×</option>
-    <option value="4">4×</option>
-  </select>
-  <label class="check" title="Play new lines as the agent adds them (f)"><input id="follow" type="checkbox" checked> Follow</label>
-  <label id="sliceBox" class="check" hidden>Layer <input id="slice" type="range" min="0" max="0" value="0"></label>
-</nav>
-<main>
-  <div class="stage">
-    <canvas id="view" aria-label="Board view"></canvas>
-    <div id="empty" class="empty" hidden>
-      <p><b>This board is empty.</b> It fills in live as soon as an agent writes to it.</p>
-      <pre id="emptyHint"></pre>
-    </div>
-  </div>
-  <aside>
-    <section>
-      <h2>Processes</h2>
-      <ul id="procs" class="procs"></ul>
-    </section>
-    <section id="errBox" hidden>
-      <h2>Errors</h2>
-      <ul id="errors" class="errors"></ul>
-    </section>
-    <section>
-      <h2>Script</h2>
-      <ol id="script" class="script"></ol>
-    </section>
-  </aside>
-</main>
+</div>
+
+<button id="helpBtn" class="island help-btn icon" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+
+<dialog id="help" class="dialog" aria-labelledby="helpTitle">
+  <header><h2 id="helpTitle">Keyboard shortcuts</h2><button id="closeHelp" class="icon" type="button" aria-label="Close">✕</button></header>
+  <div id="shortcuts" class="shortcuts"></div>
+</dialog>
+
+<p id="viewHint" class="view-hint" hidden>Tap a block to take part</p>
+<div id="control" class="island control" role="dialog" aria-label="Set a value" hidden></div>
+<div id="dragGhost" class="drag-ghost" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <div id="tip" class="tip" hidden></div>
 <script type="module" src="/web/app.js"></script>
 </body>

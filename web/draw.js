@@ -161,6 +161,14 @@ export class Springs {
     }
   }
 
+  /** Whether nothing is moving. */
+  settled() {
+    for (const a of this.m.values()) {
+      if (Math.abs((a.on ? 1 : 0) - a.s) > 0.002 || Math.abs(a.v) > 0.01) return false;
+    }
+    return true;
+  }
+
   /** Jump everything to its target (for scrubbing). */
   settle() {
     for (const a of this.m.values()) {

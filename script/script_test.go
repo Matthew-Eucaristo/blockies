@@ -88,3 +88,59 @@ func TestNoteWithArrowIsANote(t *testing.T) {
 		t.Fatalf("%+v %v", st, err)
 	}
 }
+
+func TestNewStatementsRoundTrip(t *testing.T) {
+	src := "click vote/a: vote/a -> tally : vote; add tally 1; body tally +1; focus tally\ntap vote/a\n& tap vote/b\ntap vote/a 12 vote/b 5 vote/c\nadd tally -3\nbody tally -2\nbody tally 4\nfocus stage\n"
+	s, errs := Parse(src)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if got := Format(s); got != src {
+		t.Fatalf("round trip:\n%s\nwant\n%s", got, src)
+	}
+	for _, bad := range []string{"on tally vote: tap vote/a", "add tally", "add tally 1 +", "tap", "body tally +65", "click : x -> y", "tap vote/a 0", "tap vote/a 10001", "tap 3"} {
+		if _, errs := Parse(bad); len(errs) != 1 {
+			t.Fatalf("%q parsed without error", bad)
+		}
+	}
+}
+
+func TestKeywordNamedProcesses(t *testing.T) {
+	src := "proc add\nproc tap\nadd -> tap : hi\ntap = busy\nnote add \"x\"\n"
+	s, errs := Parse(src)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if s.Stmts[2].Op != Send || s.Stmts[3].Op != State {
+		t.Fatalf("ops = %s %s", s.Stmts[2].Op, s.Stmts[3].Op)
+	}
+	if Format(s) != src {
+		t.Fatalf("round trip: %q", Format(s))
+	}
+}
+
+func TestValuesAndFormulasRoundTrip(t *testing.T) {
+	src := `proc harga "Harga" skin=input value 12000
+proc jumlah "Jumlah" skin=slider min=0 max=100 value 3
+proc nama skin=input value "Budi Santoso"
+proc total "Total" skin=number
+calc total = harga * jumlah
+set total round(total / 3, 2)
+add total 1
+cap db kapasitas
+body tank level / 10
+move api 4 6
+`
+	s, errs := Parse(src)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if got := Format(s); got != src {
+		t.Fatalf("round trip:\n%s\nwant\n%s", got, src)
+	}
+	for _, bad := range []string{"proc x skin=fancy", "proc x min=a", "proc x value", "calc = 1", "calc x 1", "set x", "move x", "move x a b", "set x 1 +"} {
+		if _, errs := Parse(bad); len(errs) != 1 {
+			t.Fatalf("%q parsed without error", bad)
+		}
+	}
+}

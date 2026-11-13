@@ -3,12 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Blockies</title>
 <link rel="stylesheet" href="/web/style.css">
+<script>{ let t = 'light'; try { t = localStorage.getItem('blockies.theme') || t; } catch {} document.documentElement.dataset.theme = t === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : t; }</script>
 </head>
 <body class="index">
-<h1>Blockies</h1>
-<p class="lede">Live boards that agents write and people watch: processes that talk by messages, shown as a world, a sequence diagram and a timeline.</p>
+<header>
+  <svg viewBox="0 0 20 20" width="26" height="26" aria-hidden="true"><rect x="2" y="2" width="7" height="7" rx="2" fill="currentColor"/><rect x="11" y="2" width="7" height="7" rx="2" fill="currentColor" opacity=".55"/><rect x="2" y="11" width="7" height="7" rx="2" fill="currentColor" opacity=".55"/><rect x="11" y="11" width="7" height="7" rx="2" fill="currentColor" opacity=".3"/></svg>
+  <h1>Blockies</h1>
+</header>
+<p class="lede">Live boards that agents draw while they talk: processes that send each other messages, shown as a world, in 3D, and as a sequence diagram with a timeline.</p>
+
+<form id="new" class="new">
+  <input id="newName" placeholder="Name a board, for example ideas" pattern="[a-z0-9_-]{1,64}" title="1 to 64 of a-z, 0-9, - and _" required aria-label="Board name" autocomplete="off">
+  <button>Open</button>
+</form>
 
 <h2>Boards</h2>
 <ul id="boards" class="cards"><li class="muted">Loading…</li></ul>
@@ -16,23 +26,28 @@
 <h2>Connect an agent</h2>
 <p>Claude Code (or any MCP client) can write boards and give you their links:</p>
 <pre>claude mcp add blockies -- blockies mcp</pre>
-<p>Or from a shell, which is what the MCP tools do too:</p>
+<p>From a shell, which is what the MCP tools do too:</p>
 <pre>blockies write demo examples/checkout.blk
 blockies append demo 'api -> db : one more query'</pre>
-<p>Load the examples with <code>blockies demo</code>. The language: <a href="/api/guide">/api/guide</a>.</p>
+<p class="muted">Talking on a board needs Anthropic credentials where the server runs (<code>ANTHROPIC_API_KEY</code>, or <code>ant auth login</code>). The language: <a href="/api/guide">/api/guide</a>.</p>
 
 <script type="module">
+document.getElementById('new').addEventListener('submit', (e) => {
+  e.preventDefault();
+  location.href = '/b/' + encodeURIComponent(document.getElementById('newName').value.trim().toLowerCase());
+});
 const ul = document.getElementById('boards');
-const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 try {
   const { boards } = await (await fetch('/api/boards')).json();
   ul.replaceChildren(...boards.map((b) => {
     const li = document.createElement('li');
+    const id = encodeURIComponent(b.board);
     const errs = b.errors.length ? ` · <span class="bad">${b.errors.length} errors</span>` : '';
-    li.innerHTML = `<a href="/b/${encodeURIComponent(b.board)}"><b>${esc(b.board)}</b><span>${esc(b.summary)}${errs}</span></a>`;
+    li.innerHTML = `<a class="open" href="/b/${id}"><b>${esc(b.board)}</b><span>${esc(b.summary)}${errs}</span></a><a class="watch" href="/b/${id}?watch" title="Open a watch-only view">Watch</a>`;
     return li;
   }));
-  if (!boards.length) ul.innerHTML = '<li class="muted">No boards yet. Run <code>blockies demo</code>, or ask your agent to draw something.</li>';
+  if (!boards.length) ul.innerHTML = '<li class="muted">No boards yet. Name one above, or run <code>blockies demo</code> for examples.</li>';
 } catch {
   ul.innerHTML = '<li class="muted">Could not reach the server.</li>';
 }

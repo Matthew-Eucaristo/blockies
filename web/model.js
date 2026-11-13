@@ -3,11 +3,11 @@
 
 /**
  * @typedef {{id: string, label: string, kind?: string, color?: string, parent?: string,
- *   at: number[], start: number, end: number, line: number}} Proc
+ *   at: number[], start: number, end: number, line: number, tap?: boolean, skin?: string, min?: number, max?: number}} Proc
  * @typedef {{from: number, to: number, label: string, sent: number, arrive: number,
  *   handled: number, line: number}} Msg
- * @typedef {{t: number, e: 'state' | 'note' | 'body', p: number, state?: string,
- *   text?: string, cells?: number[][], line?: number}} Ev
+ * @typedef {{t: number, e: 'state' | 'note' | 'body' | 'value' | 'tap' | 'focus' | 'move', p: number, state?: string,
+ *   text?: string, cells?: number[][], value?: number, line?: number}} Ev
  * @typedef {{line: number, code: string, detail: string}} Err
  * @typedef {{name: string, color?: string, states?: string[]}} Kind
  * @typedef {{version: number, world: number[], end: number, kinds: Kind[], procs: Proc[],
@@ -36,6 +36,11 @@ for (const w of ['busy', 'run', 'running', 'working', 'active', 'load', 'loading
 for (const w of ['wait', 'waiting', 'blocked', 'queued', 'pending', 'plan', 'planning', 'sleep', 'sleeping', 'idle', 'paused', 'cold', 'miss']) TONES[w] = 'wait';
 for (const w of ['fail', 'failed', 'error', 'down', 'dead', 'crash', 'crashed', 'timeout', 'red', 'broken', 'lost']) TONES[w] = 'bad';
 
+/** A number the way people read it: separators, at most 2 decimals. @param {number} n */
+export function formatNum(n) {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
 /** @param {string} state @returns {Tone} */
 export function tone(state) {
   return TONES[state.toLowerCase()] ?? 'plain';
@@ -52,8 +57,14 @@ export class Model {
     /** @type {Ev[][]} */ this.states = tl.procs.map(() => []);
     /** @type {Ev[][]} */ this.notes = tl.procs.map(() => []);
     /** @type {Ev[][]} */ this.bodies = tl.procs.map(() => []);
+    /** @type {Ev[][]} */ this.values = tl.procs.map(() => []);
+    /** @type {Ev[]} */ this.taps = [];
+    /** @type {Ev[]} */ this.focus = [];
+    /** @type {Ev[][]} */ this.moves = tl.procs.map(() => []);
     for (const e of tl.events) {
-      (e.e === 'state' ? this.states : e.e === 'note' ? this.notes : this.bodies)[e.p].push(e);
+      if (e.e === 'tap') this.taps.push(e);
+      else if (e.e === 'focus') this.focus.push(e);
+      else ({ state: this.states, note: this.notes, body: this.bodies, value: this.values, move: this.moves })[e.e]?.[e.p].push(e);
     }
     /** @type {Map<string, number>} */
     this.byId = new Map();
@@ -109,7 +120,7 @@ export class Model {
       }
     };
     tl.procs.forEach((p) => grow(p.at));
-    tl.events.forEach((e) => e.cells?.forEach(grow));
+    tl.events.forEach((e) => e.cells?.forEach(grow)); // bodies and moves
     if (!tl.procs.length) {
       lo.fill(0);
       hi.fill(0);
@@ -170,6 +181,64 @@ export class Model {
   /** @param {number} i @param {number} t @returns {number[][]} */
   bodyAt(i, t) {
     return this.last(this.bodies[i], t)?.cells ?? [];
+  }
+
+  /** A process's value at tick t (a number or a text), or undefined. @param {number} i @param {number} t */
+  valueAt(i, t) {
+    const e = this.last(this.values[i], t);
+    return e ? (e.text ?? e.value) : undefined;
+  }
+
+  /** Where a process's core is at tick t (people can move blocks). @param {number} i @param {number} t */
+  atAt(i, t) {
+    return this.last(this.moves[i], t)?.cells?.[0] ?? this.procs[i].at;
+  }
+
+  /** The process every screen should look at, at tick t (focus), or -1. @param {number} t */
+  focusAt(t) {
+    return this.last(this.focus, t)?.p ?? -1;
+  }
+
+  /** Taps that happened within the last tick before t, with age 0..1. @param {number} t */
+  tapsAt(t) {
+    return this.taps.filter((e) => e.t <= t && t - e.t < 1).map((e) => ({ p: e.p, k: t - e.t }));
+  }
+
+  /** The id of process i and every process under it. @param {number} i @returns {number[]} */
+  subtree(i) {
+    const id = this.procs[i].id;
+    const out = [];
+    for (let j = 0; j < this.procs.length; j++) {
+      const q = this.procs[j].id;
+      if (q === id || q.startsWith(id + '/')) out.push(j);
+    }
+    return out;
+  }
+
+  /** The part of the world a group of processes ever uses. @param {number[]} list */
+  boundsOf(list) {
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    /** @param {number[]} c */
+    const grow = (c) => {
+      for (let a = 0; a < 3; a++) {
+        lo[a] = Math.min(lo[a], c[a] ?? 0);
+        hi[a] = Math.max(hi[a], c[a] ?? 0);
+      }
+    };
+    for (const i of list) {
+      grow(this.procs[i].at);
+      for (const e of this.bodies[i]) e.cells?.forEach(grow);
+      for (const e of this.moves[i]) e.cells?.forEach(grow);
+    }
+    if (!list.length) return this.bounds;
+    return { lo, hi };
+  }
+
+  /** The latest process with this id, or -1. @param {string} id */
+  find(id) {
+    for (let i = this.procs.length - 1; i >= 0; i--) if (this.procs[i].id === id) return i;
+    return -1;
   }
 
   /** Messages between sent and arrival at time t, with progress 0..1. @param {number} t */
