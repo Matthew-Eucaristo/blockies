@@ -1,18 +1,12 @@
-// Runs the sim inside WebAssembly (Node) and compares hashes with the native build.
-// Usage: node scripts/wasm-determinism.mjs <path/to/blockies_wasm.wasm> < native-hashes.txt
-// Each stdin line: "<size> <scene> <seed> <ticks> <hex hash>".
 import { readFileSync } from 'node:fs';
 
 const bytes = readFileSync(process.argv[2]);
 const mod = await WebAssembly.compile(bytes);
-// hashAfter only takes and returns numbers, so wasm-bindgen's JS glue is not needed:
-// every import is stubbed and must never be called.
 const imports = {};
 for (const imp of WebAssembly.Module.imports(mod)) {
   (imports[imp.module] ??= {})[imp.name] = () => { throw new Error(`unexpected import ${imp.module}.${imp.name}`); };
 }
 const { exports } = await WebAssembly.instantiate(mod, imports);
-// Before wasm-bindgen's CLI post-processes it, exports carry a hash suffix: hashAfter_<hash>.
 const hashAfter = Object.entries(exports).find(([name]) => name === 'hashAfter' || name.startsWith('hashAfter_'))?.[1];
 if (typeof hashAfter !== 'function') throw new Error('hashAfter export not found');
 let failed = 0;
