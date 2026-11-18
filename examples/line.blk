@@ -1,0 +1,14 @@
+# A one-dimensional world. Stacked over time it draws its own sequence diagram.
+world 25
+
+proc client "Client" color=blue
+proc api "API" color=red
+proc auth "Auth" color=purple
+proc db "DB" color=green
+
+client -> api : login
+api -> auth : check token
+auth -> db : find user
+db -> auth : row
+auth -> api : ok
+api -> client : 200

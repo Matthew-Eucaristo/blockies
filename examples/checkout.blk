@@ -1,0 +1,24 @@
+# What happens when someone opens their cart. Told step by step, like a
+# sequence diagram: each message takes one tick, "&" runs with the line above.
+kind store color=green states=idle,busy,down
+
+proc browser "Browser" color=blue
+proc api "API" color=red
+proc cache "Redis" kind=store
+proc db "Postgres" kind=store
+
+browser -> api : GET /cart
+api = busy
+api -> cache : get cart:42
+cache -> api : miss
+note cache "cold after deploy"
+api -> db : SELECT cart 42
+db = busy
+body db 3
+wait 2
+db -> api : 3 rows
+db = idle
+body db 0
+& api -> cache : set cart:42
+api -> browser : 200 OK
+api = idle

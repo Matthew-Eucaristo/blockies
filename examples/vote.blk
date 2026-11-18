@@ -1,0 +1,20 @@
+# A live vote for a talk. The big screen shows the stage; people open the
+# vote part on their phones (Share -> link to this part, or ?view=vote) and
+# tap A or B. Every tap is one line on the board, so the run stays the same
+# on every screen and can be replayed.
+proc stage "Which should we build first?"
+proc stage/a "A: live presentations" color=amber
+proc stage/b "B: agentic spreadsheets" color=teal
+proc vote "Vote"
+proc vote/a "Vote A" color=amber
+proc vote/b "Vote B" color=teal
+click vote/a: vote/a -> stage/a : vote
+click vote/b: vote/b -> stage/b : vote
+on stage/a vote: add stage/a 1; body stage/a +1
+on stage/b vote: add stage/b 1; body stage/b +1
+focus stage
+note stage "tap A or B on your phone"
+# Two people already voted
+tap vote/a
+& tap vote/b
+tap vote/a

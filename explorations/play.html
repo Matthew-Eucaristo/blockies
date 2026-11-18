@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Blockies concept</title>
+<script>
+  const q = new URLSearchParams(location.search);
+  location.replace('./' + (q.get('v') ? '?v=' + encodeURIComponent(q.get('v')) : '') + '#' + (q.get('c') || 'organism'));
+</script>
+</head>
+<body></body>
+</html>

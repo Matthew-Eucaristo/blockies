@@ -1,0 +1,14 @@
+# What if the database were faster? Two requests arrive every tick. Move the
+# slider: the whole run replays with the new capacity, and the queue (the
+# database's body) grows at 1 query per tick and disappears at 2 or more.
+kind store color=green states=idle,busy
+proc kapasitas "Query per tick" skin=slider min=1 max=4 value 1 color=amber
+proc web "Web" color=blue
+proc api "API" color=red
+proc db "Postgres" kind=store
+cap db kapasitas
+on api GET: api -> db : SELECT
+on db SELECT: db -> api : rows
+note db "watch its queue"
+every 1: web -> api : GET; web -> api : GET
+wait 16
